@@ -1,10 +1,10 @@
-# oppaopp4.github.io
+# tick_replay
 
 歩値CSVリプレイ（多機能版）の公開サイトです。SBI証券 Brisk の歩値CSVをブラウザだけでリプレイし、歩み値・ローソク足・VWAP・SQZ Momentum・RS・E/H 判定・仮想売買を表示するデイトレ振り返りツールです。
 
-- ツール: https://oppaopp4.github.io/
-- 使い方: https://oppaopp4.github.io/usage.html
-- ライセンス: https://oppaopp4.github.io/license.html
+- ツール: https://oppaopp4.github.io/tick_replay/
+- 使い方: https://oppaopp4.github.io/tick_replay/usage.html
+- ライセンス: https://oppaopp4.github.io/tick_replay/license.html
 
 ## このリポジトリについて
 
