@@ -1,0 +1,805 @@
+<!doctype html>
+<!-- 歩値CSVリプレイ 多機能版。naruo4/tick-replay-csv（MIT License, Copyright (c) 2026 naruo4）をベースにした改良版。
+     Copyright (c) 2026 oppaopp4。ライセンス全文は同梱の LICENSE / license.html を参照 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>歩値CSVリプレイ Dual Chart Backtest</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="stock_master.js"></script>
+<style>
+:root{--bg:#202b31;--panel:#1b252b;--text:#e8eef2;--green:#1f7a00;--red:#8a0d0d;--yellow:#e2a23b;--line:#50616a;--soft:#b4c0c5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{min-height:58px;display:flex;align-items:center;gap:10px;padding:6px 14px;border-bottom:1px solid #83919a;font-weight:700;white-space:nowrap;overflow:hidden;flex-wrap:wrap}
+.fileGroup{display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid #52636b;border-radius:6px;background:#1b252b}
+.fileGroup.primaryGroup{border-color:#58a6d6}
+.fileGroup.refGroup{border-color:#e2a23b}
+.fileLabel{font-size:12px;color:#dce5e9;font-weight:800;letter-spacing:.02em}
+.fileHint{font-size:11px;color:#b4c0c5;font-weight:600}
+.fileGroup input[type=file]{max-width:260px}
+.fileGroup button{padding:5px 8px}
+.codebox{border:1px solid #aab5bb;border-radius:4px;color:#b8c3c8;padding:3px 8px}
+.topnum{font-size:17px}
+input[type=file]{max-width:220px;color:#dce5e9}
+button,select,input[type=range],input[type=text],input[type=number]{background:#26343b;color:var(--text);border:1px solid #5594bc;padding:6px 10px;font-size:14px}
+.stepGroup{display:inline-flex;gap:4px;align-items:center}
+#playToggle{width:96px;text-align:center;padding-left:0;padding-right:0}
+#prevBar,#nextBar{width:38px;padding-left:0;padding-right:0;text-align:center}
+button.primary{background:#396d91}button.playing{background:#8a2c2c;border-color:#ff9a9a;animation:playPulse 1.2s ease-in-out infinite}@keyframes playPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,154,154,.0)}50%{box-shadow:0 0 0 4px rgba(255,154,154,.35)}}
+a.linkbtn{color:#dce5e9;text-decoration:none;border:1px solid #5594bc;padding:5px 8px;background:#26343b;font-size:13px}
+.note{color:#b4c0c5;font-size:12px}
+.metricPlus,.tradePnlPlus{color:#ff9a9a;font-weight:800}
+.metricMinus,.tradePnlMinus{color:#8ee89a;font-weight:800}
+.metricNeutral,.tradePnlNeutral{color:#dce5e9;font-weight:700}
+.refReady{color:#8ee89a;font-weight:800}
+.refMissing{color:#ffbf7a;font-weight:800}
+.layout{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 71px)}
+.left{border-right:1px solid #8b9aa2;overflow:hidden;display:flex;flex-direction:column}
+.tabs{height:38px;display:flex;align-items:end;border-bottom:1px solid #778890}
+.tab{padding:8px 18px;color:#58a6d6;font-weight:700;border-bottom:3px solid #58a6d6}
+.tapeWrap{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}
+.table thead th{position:sticky;top:0;background:#4a4d4d;color:#fff;padding:6px;border:1px solid #707879}
+.table tbody td{padding:4px 5px;border:1px solid #52636b;text-align:right;font-weight:700}
+.table tbody td.time{text-align:center;font-size:12px}
+tr.up td.price,tr.up td.qty,tr.up td.amount{background:var(--red);color:white}
+tr.down td.price,tr.down td.qty,tr.down td.amount{background:var(--green);color:white}
+tr.flat td.price,tr.flat td.qty,tr.flat td.amount{background:#29353b;color:white}
+.right{display:flex;flex-direction:column;min-width:0}
+.controls{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.stat{color:#c7d0d4;font-size:14px;min-width:110px}
+#clock{font-size:22px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;min-width:120px;letter-spacing:.5px}
+.tradebar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:var(--panel)}
+.tradebar input{padding:5px 8px;font-size:13px}
+.tradebar .buy{border-color:#d26a6a}
+.tradebar .sell{border-color:#4cbf6b}
+.tradebar .danger{border-color:#c87171}
+.tradebar .soft{border-color:#7b91a0}
+.posBar{display:flex;justify-content:flex-start;align-items:center;padding:6px 12px 0;min-height:30px}
+.tradebox{font-size:16px;color:#c7d0d4;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.tradebox b{color:#e8eef2;font-size:20px}.tradebox b.tradePnlPlus{color:#ff9a9a}.tradebox b.tradePnlMinus{color:#8ee89a}
+.chartGrid{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:8px;min-height:0}
+.chartPane{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--line);background:var(--panel)}
+.chartHead{display:flex;justify-content:space-between;align-items:center;height:32px;overflow:hidden;white-space:nowrap;padding:0 10px;border-bottom:1px solid #40515a;font-size:13px;color:#d7e0e4}
+.chartSub{font-size:12px;color:var(--soft);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chartHead .hover{font-size:12px;color:#dce5e9;font-variant-numeric:tabular-nums}
+.chartHead .hover .hk{color:var(--soft);margin:0 2px 0 8px}
+.chartHead .hover .ht{color:#fff;font-weight:700}
+.chartHead .hover .hp{color:#ff9a9a}.chartHead .hover .hm{color:#8ee89a}
+.chartBox .hoverlayer .hovertext{display:none}
+.chartBoxWrap{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+.xhairLine{position:absolute;left:0;height:0;border-top:1px dotted #dce5e9;pointer-events:none;display:none;z-index:5}
+.xhairLabel{position:absolute;transform:translateY(-50%);background:#dce5e9;color:#111;font-size:11px;font-weight:700;padding:1px 5px;border-radius:3px;pointer-events:none;display:none;z-index:6;white-space:nowrap}
+.orderMenu{position:absolute;z-index:20;background:#1b252b;border:1px solid #5594bc;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.5);min-width:170px;display:none;font-size:13px}
+.orderMenu .omHead{padding:6px 10px;border-bottom:1px solid #40515a;color:#dce5e9;font-weight:700;background:#26343b}
+.orderMenu .omItem{padding:6px 10px;cursor:pointer;color:#e8eef2}
+.orderMenu .omItem:hover{background:#396d91}
+.orderMenu .omItem.buy{color:#ff9a9a}
+.orderMenu .omItem.sell{color:#8ee89a}
+.orderMenu .omItem.tp{color:#ff5252}
+.orderMenu .omItem.lc{color:#3ddc84}
+.orderMenu .omSep{border-top:1px solid #40515a}
+.chartBox{flex:1;min-height:0}
+.logPane{height:172px;margin:0 8px 8px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.logHead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:5px 10px;border-bottom:1px solid #40515a;font-size:13px;color:#d7e0e4}
+.logWrap{flex:1;overflow:auto}
+.logTable{width:auto;border-collapse:collapse;table-layout:fixed;font-size:13.5px;white-space:nowrap}
+.logTable thead th{position:sticky;top:0;background:#425057;padding:6px;border:1px solid #52636b}
+.logTable tbody td{padding:4px 6px;border:1px solid #415159;text-align:right}
+.logTable tbody td.txt{text-align:left}
+.logTable tbody td.center{text-align:center}
+.foot{height:25px;color:#b4c0c5;font-size:12px;padding:3px 12px;border-top:1px solid #52636b;display:flex;justify-content:space-between;gap:16px;white-space:nowrap;overflow:hidden}
+.footLinks a{color:#9ecbe8;text-decoration:none;margin-left:14px}
+.footLinks a:hover{text-decoration:underline}
+@media (max-width: 1200px){.layout{grid-template-columns:260px 1fr}.chartGrid{grid-template-columns:1fr}.logPane{height:210px}}
+</style>
+</head>
+<body>
+<header>
+<div class="fileGroup primaryGroup">
+  <span class="fileLabel">① 銘柄CSV</span>
+  <input id="csvFile" type="file" accept=".csv,text/csv" title="リプレイしたい銘柄の当日歩値CSV">
+  <span class="fileHint">主役チャート</span>
+</div>
+<div class="fileGroup refGroup">
+  <span class="fileLabel">② 参照CSV</span>
+  <input id="refCsvFile" type="file" accept=".csv,text/csv" title="参照銘柄（1570 など日経ETF、同業他社など）の当日歩値CSV">
+  <span id="refStatus" class="refMissing">参照未読込</span>
+  <label class="fileHint" title="参照銘柄の日経平均に対する連動倍率。変化率をこの値で割って地合い判定に使う。1570=2、1357=-2、1321=1。ファイル名のコードから自動設定、手入力で上書き可">倍率 <input id="refLeverage" type="text" value="2" style="width:40px;padding:3px 5px"></label>
+</div>
+<label class="note">コード <input id="stockCode" type="text" value="" placeholder="自動" style="width:62px"></label>
+<label class="note">日付 <input id="tradeDate" type="text" value="" placeholder="自動" style="width:92px"></label>
+<input id="symbolName" type="text" value="" placeholder="銘柄名 自動" style="width:150px">
+<a id="kabutanDaily" class="linkbtn" target="_blank" rel="noopener">株探時系列</a>
+<a id="kabutanBasic" class="linkbtn" target="_blank" rel="noopener">株探基本</a>
+<label class="note">前日終値 <input id="prevClose" type="text" placeholder="手入力" style="width:78px"></label>
+<span class="topnum" id="titleSymbol">未読込</span>
+<span>現在 <span id="nowPrice">-</span></span>
+<span>前日比 <span id="chg">-</span> / <span id="chgPct">-</span></span>
+<span>VWAP <span id="vwapNow">-</span> / 乖離 <span id="vwapDev">-</span></span>
+<span>時刻 <span id="nowTime">-</span></span>
+</header>
+
+<div class="layout">
+  <section class="left">
+    <div class="tabs"><div class="tab">歩み値</div></div>
+    <div class="tapeWrap">
+      <table class="table"><colgroup><col style="width:26%"><col style="width:22%"><col style="width:22%"><col style="width:30%"></colgroup><thead><tr><th>値段</th><th>株数</th><th>金額<br>(億円)</th><th>時刻</th></tr></thead><tbody id="tape"></tbody></table>
+    </div>
+  </section>
+  <section class="right">
+    <div class="controls">
+      <!-- 再生/停止と足送りはシークバー左のグループにまとめる -->
+      <label>足 <select id="barMode"><option value="1" selected>1分足</option><option value="5">5分足</option></select></label>
+      <label>速度 <select id="speed"><option value="0.25">0.25倍</option><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="2">2倍</option><option value="5">5倍</option><option value="10">10倍</option><option value="20">20倍</option><option value="60">60倍</option><option value="300">300倍</option></select></label>
+      <span class="stepGroup"><button id="prevBar" title="前の足の終わりへ戻る（←キー）">◀</button><button id="playToggle" class="primary" title="クリックで再生/停止を切替（スペースキーでも可）">▶ 再生</button><button id="nextBar" title="今の足の終わりまで進む（→キー）。約定判定は再生と同じ">▶</button></span><input id="slider" type="range" min="0" max="0" value="0" style="width:23%">
+      <span class="stat" id="progress">0 / 0</span>
+      <span class="stat" id="clock">--:--:--</span>
+      <label>表示 <select id="windowMode"><option value="auto" selected>直近中心</option><option value="all">当日全体</option></select></label>
+      <label class="note">出来高 <select id="volumeScaleMode"><option value="sqrt" selected>圧縮</option><option value="raw">通常</option></select></label>
+      <label class="note"><input id="showEH" type="checkbox" checked> E/H</label>
+      <label class="note"><input id="showEhBg" type="checkbox"> 背景</label>
+      <label class="note"><input id="showSqz" type="checkbox"> SQZ</label>
+      <label class="note"><input id="showRs" type="checkbox"> RS</label>
+      <label class="note"><input id="soundOn" type="checkbox" checked> 約定音</label>
+      <label class="note">地合い閾値 <input id="refMinMovePct" type="text" value="0.00" style="width:52px">%</label>
+      <label class="note">SQZ期間 <input id="sqzLength" type="range" min="5" max="60" value="10" style="width:78px"><span id="sqzLengthVal">10</span></label>
+      <label class="note">RS期間 <input id="rsLength" type="range" min="5" max="200" value="20" style="width:86px"><span id="rsLengthVal">20</span></label>
+    </div>
+    <div class="tradebar">
+      <label class="note">株数 <input id="tradeQty" type="number" value="100" step="100" style="width:86px"></label>
+      <label class="note">指値 <input id="limitPrice" type="number" value="" step="1" placeholder="現在値" style="width:90px"></label>
+      <button id="setLimitNow" class="soft">現在値</button>
+      <button id="buyMarket" class="buy">買 成行</button>
+      <button id="buyLimit" class="buy">買 指値</button>
+      <button id="sellMarket" class="sell">売 成行</button>
+      <button id="sellLimit" class="sell">売 指値</button>
+      <button id="cancelOrders" class="soft">指値取消</button>
+      <button id="resetTrading" class="danger">売買リセット</button>
+      <label class="note" title="買い約定後に自動で置く利確ラインの初期値（平均取得単価からの％）">TP <input id="tpPct" type="text" value="1.0" style="width:44px">%</label>
+      <label class="note" title="買い約定後に自動で置く損切ラインの初期値（平均取得単価からの％）">LC <input id="lcPct" type="text" value="0.5" style="width:44px">%</label>
+    </div>
+    <!-- 建玉・損益の要約はチャート直上に左寄せで大きく出す -->
+    <div class="posBar">
+      <span class="tradebox">
+        <span>建玉 <b id="posNow">-</b></span>
+        <span>平均 <b id="avgNow">-</b></span>
+        <span>実現 <b id="realizedNow">-</b></span>
+        <span>含み <b id="unrealizedNow">-</b></span>
+        <span>合計損益 <b id="pnlNow">-</b></span>
+        <span>指値 <b id="pendingNow">0</b></span>
+      </span>
+    </div>
+    <div class="chartGrid">
+      <div class="chartPane">
+        <div class="chartHead"><span id="mainChartTitle">銘柄チャート</span><span class="chartSub hover" id="mainChartMeta" title="カーソル位置の足の値（外すと最新の足）。クリックで発注メニュー・TP/LC線はドラッグで変更">VWAP / SMA5 / SMA25 / E/H ／ クリックで発注メニュー・TP/LC線はドラッグで変更</span></div>
+        <div class="chartBoxWrap">
+          <div id="mainChart" class="chartBox"></div>
+          <div id="orderMenu" class="orderMenu"></div>
+        </div>
+      </div>
+      <div class="chartPane">
+        <div class="chartHead"><span id="refChartTitle">参照チャート</span><span class="chartSub hover" id="refChartMeta" title="カーソル位置の足の値（外すと最新の足）。地合い参照（変化率÷倍率）">地合い参照（変化率÷倍率）</span></div>
+        <div class="chartBoxWrap">
+          <div id="refChart" class="chartBox"></div>
+        </div>
+      </div>
+    </div>
+    <div class="logPane">
+      <div class="logHead"><span>取引履歴（各取引の収支つき）</span></div>
+      <div class="logWrap">
+        <table class="logTable">
+          <thead><tr><th style="width:40px">No</th><th style="width:78px">時刻</th><th style="width:104px">種別</th><th style="width:118px" title="決済したときの建玉の保有時間（新規建て・ドテンからの経過）">保有時間</th><th style="width:64px">株数</th><th style="width:80px">価格</th><th style="width:88px">収支</th><th style="width:84px">保有後</th></tr></thead>
+          <tbody id="tradeLogBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- 使い方/ライセンスは公開サイト用の別ページ（site/ から dist/ に組み立てる）。相対リンクなので手元で advanced.html を直接開いたときは 404 -->
+    <div class="foot"><span>UTF-8 CSV想定。銘柄CSVと同日の参照銘柄（1570 など）の歩値CSVを読み込むと、参照の変化率÷倍率でE/H地合い判定。仮想売買は手数料・税金・部分約定を未考慮。</span><span class="footLinks"><a href="usage.html">使い方</a><a href="license.html">ライセンス</a><a href="https://github.com/oppaopp4/oppaopp4.github.io" target="_blank" rel="noopener">GitHub</a></span></div>
+  </section>
+</div>
+
+<script>
+let DATA={symbol:"",date:"",code:"",tickCount:0,ticks:[],summary:{startPlayMs:0,endPlayMs:0,startMs:0,endMs:0}};
+let REFDATA={symbol:"",date:"",code:"",tickCount:0,ticks:[],summary:{startPlayMs:0,endPlayMs:0,startMs:0,endMs:0}};
+let idx=0, timer=null, currentPlayMs=0, playBaseReal=0, playBaseMarket=0, barMinutes=1, lastRender=0;
+const IND={lookbackHigh:10, refLookback:5, volAvgLen:20, volDryLen:5, volSpikeSoftMult:1.05, volSpikeHardMult:1.20, emaFastLen:20, emaSlowLen:50, cooldownBars:5};
+let TRADE={startCash:1000000,cash:1000000,position:0,avgPrice:0,realized:0,pending:[],history:[],nextOrderId:1};
+const tapeBody=document.getElementById("tape"),slider=document.getElementById("slider"),progress=document.getElementById("progress"),nowPrice=document.getElementById("nowPrice"),nowTime=document.getElementById("nowTime"),clock=document.getElementById("clock");
+
+function pad2(n){return String(n).padStart(2,"0")}
+function fmtMs(ms){const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000),s=Math.floor((ms%60000)/1000);return pad2(h)+":"+pad2(m)+":"+pad2(s)}
+function minuteBucket(ms,minutes){const minute=Math.floor(ms/60000);return Math.floor(minute/minutes)*minutes*60000}
+function fmtBucket(ms){const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000);return pad2(h)+":"+pad2(m)}
+function cleanNum(v){if(v==null)return NaN;return Number(String(v).replace(/,/g,"").replace(/\s/g,"").trim())}
+function parseFilenameInfo(filename){const m=String(filename).match(/QR-([0-9A-Z]{4})-(\d{8})/i); if(!m)return {code:"",date:""}; const y=m[2].slice(0,4),mo=m[2].slice(4,6),d=m[2].slice(6,8); return {code:m[1].toUpperCase(),date:y+"-"+mo+"-"+d};}
+function lookupStock(code){const master=typeof STOCK_MASTER!=="undefined"?STOCK_MASTER:{}; const v=code?master[code]:null; return v ? (typeof v==="string" ? {name:v,market:"",industry:""} : v) : null;}
+function updateKabutanLinks(code){const daily=document.getElementById("kabutanDaily"), basic=document.getElementById("kabutanBasic"); if(code){daily.href="https://kabutan.jp/stock/kabuka?code="+encodeURIComponent(code); basic.href="https://kabutan.jp/stock/?code="+encodeURIComponent(code); daily.style.pointerEvents="auto"; basic.style.pointerEvents="auto"; daily.style.opacity="1"; basic.style.opacity="1";} else {daily.removeAttribute("href"); basic.removeAttribute("href"); daily.style.pointerEvents="none"; basic.style.pointerEvents="none"; daily.style.opacity=".45"; basic.style.opacity=".45";}}
+function fmtNum(x,d=0){if(!Number.isFinite(x))return "-"; return Number(x).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});}
+function fmtPct(x){if(!Number.isFinite(x))return "-"; return (x>=0?"+":"")+x.toFixed(2)+"%";}
+function fmtSigned(x,d=0){if(!Number.isFinite(x))return "-"; return (x>=0?"+":"")+fmtNum(x,d);}
+function setMetric(id, value, signValue){const el=document.getElementById(id); el.textContent=value; el.classList.remove("metricPlus","metricMinus","metricNeutral"); if(!Number.isFinite(signValue) || signValue===0) el.classList.add("metricNeutral"); else if(signValue>0) el.classList.add("metricPlus"); else el.classList.add("metricMinus");}
+function parseTimeMs(s){const m=String(s).trim().match(/(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?/); if(!m)return null; const h=Number(m[1]),mi=Number(m[2]),se=Number(m[3]),ms=Number((m[4]||"0").padEnd(3,"0")); return {display:pad2(h)+":"+pad2(mi)+":"+pad2(se)+"."+String(ms).padStart(3,"0"), secKey:pad2(h)+":"+pad2(mi)+":"+pad2(se), ms:((h*3600+mi*60+se)*1000+ms)};}
+function parseCSV(text){const rows=[];let row=[],field="",q=false; for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1]; if(q){ if(c=='"'&&n=='"'){field+='"';i++} else if(c=='"'){q=false} else field+=c; } else { if(c=='"')q=true; else if(c==","){row.push(field);field=""} else if(c=="\n"){row.push(field);rows.push(row);row=[];field=""} else if(c=="\r"){} else field+=c; }} if(field.length||row.length){row.push(field);rows.push(row)} return rows.filter(r=>r.some(x=>String(x).trim()!==""));}
+function findCol(headers, patterns){for(const p of patterns){const i=headers.findIndex(h=>String(h).toLowerCase().includes(p)); if(i>=0)return i;} return -1;}
+function buildDataFromRows(rows, filename, forcedSymbol=""){if(rows.length<2)throw new Error("CSV行が少なすぎます"); const headers=rows[0].map(h=>String(h).trim()); const timeCol=findCol(headers,["時刻","time"]); const priceCol=findCol(headers,["値段","価格","price"]); const qtyCol=findCol(headers,["株数","数量","出来高","qty","volume"]); const amountCol=findCol(headers,["金額","amount"]); if(timeCol<0||priceCol<0||qtyCol<0)throw new Error("必要列が見つかりません。時刻・値段・株数 が必要です。検出ヘッダー: "+headers.join(" / "));
+  let raw=[]; for(let r=1;r<rows.length;r++){ const row=rows[r], tm=parseTimeMs(row[timeCol]); const price=cleanNum(row[priceCol]), qty=cleanNum(row[qtyCol]); if(!tm||!Number.isFinite(price)||!Number.isFinite(qty))continue; let amount=amountCol>=0?cleanNum(row[amountCol]):price*qty; if(!Number.isFinite(amount))amount=price*qty; raw.push({time:tm.display,secKey:tm.secKey,ms:tm.ms,price:Math.round(price),qty:Math.round(qty),amount}); } // Brisk の CSV は新しい順。JS の sort は安定なので、同一秒内の順序を時系列にするには先に反転しておく必要がある（古い順のファイルはそのまま）
+ if(raw.length>1 && raw[0].ms>raw[raw.length-1].ms)raw.reverse();
+ raw.sort((a,b)=>a.ms-b.ms);
+  let lastDir=0,prev=null; for(const x of raw){ let d=0; if(prev!=null){if(x.price>prev)d=1; else if(x.price<prev)d=-1; else d=lastDir;} x.dir=d; if(d!==0)lastDir=d; prev=x.price; }
+  const counts=new Map(), seqs=new Map(); for(const x of raw)counts.set(x.secKey,(counts.get(x.secKey)||0)+1); for(const x of raw){ const seq=seqs.get(x.secKey)||0, cnt=counts.get(x.secKey)||1; x.playMs=x.ms+Math.floor(((seq+0.5)/cnt)*1000); seqs.set(x.secKey,seq+1); }
+  let cumPV=0,cumVol=0; const ticks=raw.map(x=>{cumPV+=x.price*x.qty; cumVol+=x.qty; const vwap=cumVol?cumPV/cumVol:null; return [x.time,x.price,x.qty,Number((x.amount/100000000).toFixed(4)),x.dir,x.ms,x.playMs,Number(vwap.toFixed(2))];});
+  const totalVolume=raw.reduce((a,b)=>a+b.qty,0); const totalAmount=raw.reduce((a,b)=>a+b.amount,0)/100000000; const info=parseFilenameInfo(filename); const master=lookupStock(info.code); return { code:info.code, tradeDate:info.date, symbol:forcedSymbol || (master ? master.name : (info.code ? info.code : filename.replace(/\.csv$/i,""))), market:master ? master.market : "", industry:master ? master.industry : "", tickCount:ticks.length, ticks, summary:{totalVolume,totalAmountOku:Number(totalAmount.toFixed(2)),startPlayMs:ticks[0][6],endPlayMs:ticks[ticks.length-1][6],startMs:ticks[0][5],endMs:ticks[ticks.length-1][5]} };}
+function findTickIndexByPlayMs(ms){const ticks=DATA.ticks; let lo=0,hi=ticks.length-1,ans=0; while(lo<=hi){const mid=Math.floor((lo+hi)/2); if(ticks[mid][6]<=ms){ans=mid;lo=mid+1} else hi=mid-1;} return ans;}
+function findTickIndexByMs(data, ms){const ticks=data.ticks; if(!ticks.length)return -1; let lo=0,hi=ticks.length-1,ans=-1; while(lo<=hi){const mid=(lo+hi)>>1; if(ticks[mid][5]<=ms){ans=mid;lo=mid+1} else hi=mid-1;} return ans;}
+function buildBarsFromData(data, upto, minutes){const bars=[],map=new Map(); let cumPV=0,cumVol=0; const last=Math.min(upto, data.ticks.length-1); if(last<0)return bars; for(let i=0;i<=last;i++){ const t=data.ticks[i],price=t[1],qty=t[2],ms=t[5],key=minuteBucket(ms,minutes); let b=map.get(key); if(!b){b={key,time:fmtBucket(key),open:price,high:price,low:price,close:price,volume:0,vwap:null}; map.set(key,b); bars.push(b);} b.high=Math.max(b.high,price); b.low=Math.min(b.low,price); b.close=price; b.volume+=qty; cumPV+=price*qty; cumVol+=qty; b.vwap=cumPV/cumVol; } bars.forEach((b,i)=>b.index=i); return bars;}
+function buildLiveBars(upto){return buildBarsFromData(DATA, upto, barMinutes)}
+function buildRefBarsUptoMs(ms){ if(!REFDATA || !REFDATA.ticks.length)return []; if(!Number.isFinite(ms))return buildBarsFromData(REFDATA, REFDATA.ticks.length-1, barMinutes); const refIdx=findTickIndexByMs(REFDATA, ms); if(refIdx<0)return []; /* 参照の最初の約定より前 → まだ何も無い（以前は全日分を返していたバグ） */ return buildBarsFromData(REFDATA, refIdx, barMinutes); }
+function emaSeries(values,len){const out=[]; const k=2/(len+1); let ema=null; for(const v of values){ema=ema==null?v:(v*k+ema*(1-k)); out.push(ema);} return out;}
+function smaSeries(values,len){const out=[]; let s=0; for(let i=0;i<values.length;i++){ s+=values[i]; if(i>=len)s-=values[i-len]; out.push(i>=len-1?s/len:NaN); } return out;}
+// 配色: 上昇=赤 / 下落=緑（日本式）
+const COL={up:'#f07b7b',down:'#7fe48c',upStrong:'#ff5d5d',upWeak:'#8a2c2c',downStrong:'#6dff5c',downWeak:'#269b3f',vwap:'#a9b4ba',sma5:'#ff5252',sma25:'#3ddc84',volUp:'rgba(255,119,119,0.55)',volDown:'rgba(105,209,122,0.55)',plus:'#ff9a9a',minus:'#8ee89a',tp:'#ff5252',lc:'#3ddc84',entry:'#f0d84d',avg:'#dce5e9',now:'#ff9f2e'};
+const MA={fastLen:5,slowLen:25};
+function volumeColors(fullBars){return fullBars.map((b,i)=> i===0 || b.volume>=fullBars[i-1].volume ? COL.volUp : COL.volDown);}
+function smaAt(values,i,len){if(i-len+1<0)return NaN; let s=0; for(let j=i-len+1;j<=i;j++)s+=values[j]; return s/len;}
+function maxPrevHigh(bars,i,len){if(i<1)return NaN; const from=Math.max(0,i-len); let m=-Infinity; for(let j=from;j<i;j++)m=Math.max(m,bars[j].high); return m;}
+
+function getRangeInt(id, fallback){const el=document.getElementById(id); const v=el?Number(el.value):fallback; return Number.isFinite(v)&&v>0?Math.floor(v):fallback;}
+function updateSliderLabels(){const sqz=document.getElementById('sqzLength'), rs=document.getElementById('rsLength'); if(sqz)document.getElementById('sqzLengthVal').textContent=sqz.value; if(rs)document.getElementById('rsLengthVal').textContent=rs.value;}
+function stdevAt(values,i,len){if(i-len+1<0)return NaN; const mean=smaAt(values,i,len); if(!Number.isFinite(mean))return NaN; let s=0; for(let j=i-len+1;j<=i;j++){const v=values[j]; if(!Number.isFinite(v))return NaN; s+=(v-mean)*(v-mean);} return Math.sqrt(s/len);}
+function highestAt(values,i,len){if(i-len+1<0)return NaN; let m=-Infinity; for(let j=i-len+1;j<=i;j++){const v=values[j]; if(!Number.isFinite(v))return NaN; m=Math.max(m,v);} return m;}
+function lowestAt(values,i,len){if(i-len+1<0)return NaN; let m=Infinity; for(let j=i-len+1;j<=i;j++){const v=values[j]; if(!Number.isFinite(v))return NaN; m=Math.min(m,v);} return m;}
+function linregAt(values,i,len){if(i-len+1<0)return NaN; const n=len; let sumX=0,sumY=0,sumXY=0,sumXX=0; for(let k=0;k<n;k++){const y=values[i-len+1+k]; if(!Number.isFinite(y))return NaN; sumX+=k; sumY+=y; sumXY+=k*y; sumXX+=k*k;} const denom=n*sumXX-sumX*sumX; if(denom===0)return NaN; const slope=(n*sumXY-sumX*sumY)/denom; const intercept=(sumY-slope*sumX)/n; return intercept+slope*(n-1);}
+function computeSqzMom(bars){
+  const length=getRangeInt('sqzLength',10), mult=2.0, lengthKC=length, multKC=1.5;
+  const close=bars.map(b=>b.close), high=bars.map(b=>b.high), low=bars.map(b=>b.low);
+  const tr=bars.map((b,i)=>i===0 ? b.high-b.low : Math.max(b.high-b.low, Math.abs(b.high-bars[i-1].close), Math.abs(b.low-bars[i-1].close)));
+  const raw=[], val=[], bcolors=[], zcolors=[];
+  for(let i=0;i<bars.length;i++){
+    const basis=smaAt(close,i,length);
+    const dev=mult*stdevAt(close,i,length);
+    const upperBB=Number.isFinite(basis)&&Number.isFinite(dev)?basis+dev:NaN;
+    const lowerBB=Number.isFinite(basis)&&Number.isFinite(dev)?basis-dev:NaN;
+    const ma=smaAt(close,i,lengthKC);
+    const rangema=smaAt(tr,i,lengthKC);
+    const upperKC=Number.isFinite(ma)&&Number.isFinite(rangema)?ma+rangema*multKC:NaN;
+    const lowerKC=Number.isFinite(ma)&&Number.isFinite(rangema)?ma-rangema*multKC:NaN;
+    const sqzOn=Number.isFinite(lowerBB)&&Number.isFinite(lowerKC)&&lowerBB>lowerKC&&upperBB<upperKC;
+    const sqzOff=Number.isFinite(lowerBB)&&Number.isFinite(lowerKC)&&lowerBB<lowerKC&&upperBB>upperKC;
+    const noSqz=!sqzOn&&!sqzOff;
+    const hh=highestAt(high,i,lengthKC), ll=lowestAt(low,i,lengthKC), smaClose=smaAt(close,i,lengthKC);
+    raw[i]=(Number.isFinite(hh)&&Number.isFinite(ll)&&Number.isFinite(smaClose)) ? close[i]-(((hh+ll)/2+smaClose)/2) : NaN;
+    val[i]=linregAt(raw,i,lengthKC);
+    const prev=Number.isFinite(val[i-1])?val[i-1]:0;
+    bcolors[i]=val[i]>0 ? (val[i]>prev ? COL.upStrong : COL.upWeak) : (val[i]<prev ? COL.downStrong : COL.downWeak);
+    zcolors[i]=noSqz ? '#3d78ff' : sqzOn ? '#111111' : '#9a9a9a';
+  }
+  return {val,bcolors,zcolors};
+}
+function makeRefGetter(refBars){let p=0; return function(key){while(p+1<refBars.length && refBars[p+1].key<=key)p++; if(!refBars.length || refBars[p].key>key)return null; return refBars[p].close;};}
+// 参照チャート用の RS（参照 ÷ 銘柄 − 1）。銘柄側 RS の鏡像。参照の各足の時刻に対応する銘柄の終値を使う
+function computeRefRelativeStrength(refBarsAll){
+  const len=getRangeInt('rsLength',20);
+  if(!DATA.ticks.length)return refBarsAll.map(()=>NaN);
+  const mainBars=buildLiveBars(idx); if(!mainBars.length)return refBarsAll.map(()=>NaN);
+  const getMain=makeRefGetter(mainBars);
+  const mainClose=refBarsAll.map(b=>getMain(b.key));
+  return refBarsAll.map((b,i)=>{
+    if(i<len)return NaN;
+    const baseNow=b.close, basePrev=refBarsAll[i-len].close, compNow=mainClose[i], compPrev=mainClose[i-len];
+    return Number.isFinite(baseNow)&&Number.isFinite(basePrev)&&Number.isFinite(compNow)&&Number.isFinite(compPrev)&&basePrev!==0&&compPrev!==0 ? baseNow/basePrev/(compNow/compPrev)-1 : NaN;
+  });
+}
+function computeRelativeStrength(mainBars){
+  const len=getRangeInt('rsLength',20);
+  const refBars=buildRefBarsUptoMs(DATA.ticks.length ? DATA.ticks[idx][5] : NaN);
+  if(!refBars.length)return mainBars.map(()=>NaN);
+  const getRef=makeRefGetter(refBars);
+  const refClose=mainBars.map(b=>getRef(b.key));
+  const out=[];
+  for(let i=0;i<mainBars.length;i++){
+    if(i<len){out.push(NaN); continue;}
+    const baseNow=mainBars[i].close, basePrev=mainBars[i-len].close;
+    const compNow=refClose[i], compPrev=refClose[i-len];
+    out.push(Number.isFinite(baseNow)&&Number.isFinite(basePrev)&&Number.isFinite(compNow)&&Number.isFinite(compPrev)&&basePrev!==0&&compPrev!==0 ? baseNow/basePrev/(compNow/compPrev)-1 : NaN);
+  }
+  return out;
+}
+
+// 参照銘柄の日経平均に対する連動倍率。既知の日経 ETF は自動設定、それ以外は 1。「倍率」欄で上書き可（負値=インバース）
+const REF_LEVERAGE={'1570':2,'1458':2,'1579':2,'1357':-2,'1360':-2,'1571':-1,'1456':-1,'1321':1,'1320':1,'1330':1,'1329':1,'1346':1,'1369':1,'1578':1,'1397':1,'2516':1};
+function refLeverage(){ const v=cleanNum(document.getElementById('refLeverage')?.value); return Number.isFinite(v)&&v!==0?v:1; }
+function refLabel(){ return REFDATA.code && REF_LEVERAGE[REFDATA.code]!==undefined ? '日経換算' : '参照変化率'; }
+function refName(){ if(!REFDATA.ticks.length)return '参照'; const c=REFDATA.code||''; let s=REFDATA.symbol||''; if(s===c)s=''; if(s.length>12)s=s.slice(0,12)+'…'; return (c+(s?' '+s:'')).trim()||'参照'; } // 1570 のような長い名称は 12 文字で切る
+function computeIndicators(fullBars){ const n=fullBars.length, close=fullBars.map(b=>b.close), volume=fullBars.map(b=>b.volume); const emaFast=smaSeries(close,MA.fastLen), emaSlow=smaSeries(close,MA.slowLen); const refBars=buildRefBarsUptoMs(DATA.ticks.length ? DATA.ticks[idx][5] : NaN); let p=0; function getRef(key){ while(p+1<refBars.length && refBars[p+1].key<=key)p++; if(!refBars.length || refBars[p].key>key)return null; return {close:refBars[p].close, refIndex:p, bars:refBars}; } const minRefMove=cleanNum(document.getElementById("refMinMovePct")?.value); const refMinPct=Number.isFinite(minRefMove)?minRefMove:0; let lastLabel=-999999, prevState=0; const out=[];
+  for(let i=0;i<n;i++){ const b=fullBars[i]; const refNow=getRef(b.key); let refUp=false, refNikkeiPct=NaN; if(refNow && refNow.refIndex>=IND.refLookback){ const refPrev=refNow.bars[refNow.refIndex-IND.refLookback]; if(refPrev && refPrev.close){ refNikkeiPct=(refNow.close/refPrev.close-1)*100/refLeverage(); refUp=refNikkeiPct>refMinPct; } } const aboveVwap=b.close>b.vwap; const emaFastUp=i>0 && emaFast[i]>emaFast[i-1]; const trendUp=b.close>emaFast[i] && emaFast[i]>emaSlow[i] && emaFastUp; const prevHigh=maxPrevHigh(fullBars,i,IND.lookbackHigh); const breakout=Number.isFinite(prevHigh) && b.close>prevHigh; const continueBreak=i>0 && b.close>fullBars[i-1].high; const volAvg=smaAt(volume,i,IND.volAvgLen); const volAvgPrev=smaAt(volume,i-1,IND.volAvgLen); const volDryAvg=smaAt(volume,i-1,IND.volDryLen); const volDry=Number.isFinite(volDryAvg)&&Number.isFinite(volAvgPrev)&&volDryAvg<volAvgPrev; const volSpikeSoft=Number.isFinite(volAvg)&&b.volume>volAvg*IND.volSpikeSoftMult; const volSpikeHard=Number.isFinite(volAvg)&&b.volume>volAvg*IND.volSpikeHardMult; const volAboveAvg=Number.isFinite(volAvg)&&b.volume>volAvg; const bullCandle=b.close>b.open; const range=Math.max(0,b.high-b.low); const strongBullCandle=b.close>b.open && (range===0 || b.close>=b.high-range*0.25); const watchSignal=aboveVwap && refUp && b.close>emaFast[i] && emaFastUp; const entryBreakout=aboveVwap && refUp && breakout && volDry && volSpikeSoft; const entryContinuation=aboveVwap && refUp && trendUp && bullCandle && continueBreak && volAboveAvg; const entrySignal=entryBreakout || entryContinuation; const heatSignal=entrySignal && volSpikeHard && strongBullCandle; const state=heatSignal?3:entrySignal?2:watchSignal?1:0; const canLabel=i-lastLabel>=IND.cooldownBars; const newE=state===2 && prevState!==2 && canLabel; const newH=state===3 && prevState!==3 && canLabel; if(newE||newH)lastLabel=i; out.push({emaFast:emaFast[i],emaSlow:emaSlow[i],state,newE,newH,refNikkeiPct,refUp}); prevState=state; }
+  return out; }
+function getCurrentPrice(){return DATA.ticks.length?DATA.ticks[idx][1]:NaN}
+function getTradeQty(){const q=Math.floor(cleanNum(document.getElementById("tradeQty").value)); return Number.isFinite(q)&&q>0?q:0}
+function getLimitPrice(){const p=cleanNum(document.getElementById("limitPrice").value); return Number.isFinite(p)&&p>0?p:NaN}
+function tradeClass(el,value){el.classList.remove("tradePnlPlus","tradePnlMinus","tradePnlNeutral"); el.classList.add(value>0?"tradePnlPlus":value<0?"tradePnlMinus":"tradePnlNeutral")}
+function updateTradeLog(){ const body=document.getElementById("tradeLogBody"); body.innerHTML=""; const rows=TRADE.history.slice().reverse(); if(!rows.length){ body.innerHTML='<tr><td colspan="8" class="center">まだ取引はありません</td></tr>'; return; } for(const tr of rows){ const pnlCls=tr.realizedDelta>0?'tradePnlPlus':tr.realizedDelta<0?'tradePnlMinus':'tradePnlNeutral'; const pnlText=tr.closedQty>0?fmtSigned(tr.realizedDelta,0):'-'; const holdText=tr.closedQty>0?fmtHold(tr.holdMs):''; const row=document.createElement('tr'); row.innerHTML=`<td class="center">${tr.id}</td><td class="center">${tr.time}</td><td class="txt">${tr.kind}</td><td class="center">${holdText}</td><td>${fmtNum(tr.qty,0)}</td><td>${fmtNum(tr.price,priceDecimals())}</td><td class="${pnlCls}">${pnlText}</td><td>${fmtPosition(tr.positionAfter)}</td>`; body.appendChild(row); } }
+function fmtPosition(p){ return p>0?'買 '+fmtNum(p,0):p<0?'売 '+fmtNum(-p,0):'0'; }
+// 資金は無制限。損益 = 実現 + 含み。建玉は正=買い建て、負=売り建て（空売り可）
+function updateTradeUI(){ const price=getCurrentPrice(); const unreal=TRADE.position!==0&&Number.isFinite(price)?(price-TRADE.avgPrice)*TRADE.position:0; const pnl=TRADE.realized+unreal; document.getElementById("posNow").textContent=fmtPosition(TRADE.position); document.getElementById("avgNow").textContent=TRADE.position?fmtNum(TRADE.avgPrice,2):"-"; document.getElementById("realizedNow").textContent=fmtSigned(TRADE.realized,0); document.getElementById("unrealizedNow").textContent=fmtSigned(unreal,0); document.getElementById("pnlNow").textContent=fmtSigned(pnl,0); document.getElementById("pendingNow").textContent=TRADE.pending.length.toLocaleString(); tradeClass(document.getElementById("realizedNow"),TRADE.realized); tradeClass(document.getElementById("unrealizedNow"),unreal); tradeClass(document.getElementById("pnlNow"),pnl); updateTradeLog(); }
+function resetTrading(){ TRADE={position:0,avgPrice:0,realized:0,entryMs:null,pending:[],history:[],nextOrderId:1}; updateTradeUI(); renderAllCharts(true); }
+function recordTrade(side,qty,price,ms,kind,cashDelta,realizedDelta,closedQty,holdMs){ TRADE.history.push({id:TRADE.history.length+1, side, qty, price, ms, kind, key:minuteBucket(ms,barMinutes), time:fmtMs(ms), cashDelta, realizedDelta, closedQty, holdMs, positionAfter:TRADE.position}); }
+function fmtHold(ms){ if(!Number.isFinite(ms)||ms<0)return "-"; const s=Math.round(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60; return (h?h+"時間":"")+(h||m?m+"分":"")+sec+"秒"; }
+function executeTrade(side,qty,price,ms,kind,silent=false){
+  if(!qty||!Number.isFinite(price))return false;
+  const dir=side==="buy"?1:-1, pos=TRADE.position; let realizedDelta=0, closedQty=0;
+  if(pos===0 || Math.sign(pos)===dir){ // 新規建て or 同方向の追加（平均取得単価を加重平均）
+    const oldValue=TRADE.avgPrice*Math.abs(pos); TRADE.avgPrice=(oldValue+price*qty)/(Math.abs(pos)+qty); TRADE.position=pos+dir*qty;
+  } else { // 反対売買: 保有分を決済し、残りがあればドテン
+    closedQty=Math.min(qty,Math.abs(pos)); realizedDelta=(price-TRADE.avgPrice)*closedQty*Math.sign(pos); TRADE.realized+=realizedDelta;
+    TRADE.position=pos+dir*qty; if(TRADE.position===0)TRADE.avgPrice=0; else if(qty>closedQty)TRADE.avgPrice=price;
+  }
+  const holdMs=closedQty>0&&TRADE.entryMs!=null?ms-TRADE.entryMs:null; // 決済時の保有時間（新規建て・ドテンからの経過）
+  if(TRADE.position===0)TRADE.entryMs=null; else if(pos===0||qty>closedQty)TRADE.entryMs=ms;
+  recordTrade(side,qty,price,ms,kind,-dir*price*qty,realizedDelta,closedQty,holdMs);
+  if(document.getElementById('soundOn')?.checked)playFillSound(side,closedQty>0);
+  syncExitOrders(); updateTradeUI(); renderAllCharts(true); return true;
+}
+// 建玉方向に合わない TP/LC を消し、建玉があるのに無ければ置き直す
+function syncExitOrders(){ const pos=TRADE.position; const exitSide=pos>0?'sell':pos<0?'buy':null; TRADE.pending=TRADE.pending.filter(o=>!(o.role==='tp'||o.role==='lc') || (exitSide && o.side===exitSide)); if(exitSide)ensureExitOrders(); }
+// 注文: {id, side:'buy'|'sell', qty:数値|'all'(保有全量), price, type:'limit'|'stop', role:'entry'|'exit'|'tp'|'lc'}
+//   limit: 買いは price 以下で約定 / 売りは price 以上で約定。 stop(逆指値): 買いは price 以上 / 売りは price 以下に達したらその時の値で約定
+function orderHits(order,tick){ const p=tick[1]; if(order.type==='stop') return order.side==='buy' ? p>=order.price : p<=order.price; return order.side==='buy' ? p<=order.price : p>=order.price; }
+function orderQty(o){ return o.qty==='all' ? Math.abs(TRADE.position) : o.qty; }
+function kindLabel(o){ if(o.role==='tp')return '利確(TP)'; if(o.role==='lc')return '損切(LC)'; return (o.side==='buy'?'買':'売')+(o.type==='stop'?'逆指値':'指値'); }
+function inferTickSize(ticks){ const prices=[...new Set(ticks.map(t=>t[1]))].sort((a,b)=>a-b); let m=Infinity; for(let i=1;i<prices.length;i++){ const d=prices[i]-prices[i-1]; if(d>0&&d<m)m=d; } return Number.isFinite(m)&&m>0?m:1; }
+function snapPrice(p,dir){ const ts=DATA.tickSize||1; const q=p/ts; const n=dir==='up'?Math.ceil(q-1e-9):dir==='down'?Math.floor(q+1e-9):Math.round(q); return Number((n*ts).toFixed(4)); }
+function priceDecimals(){ return (DATA.tickSize||1)<1?1:0; }
+// 平均取得単価からの％。建玉方向に対する損益の向きで符号を付ける（買い建て: 上が＋ / 売り建て: 下が＋）
+function pctFromAvg(price){ const avg=TRADE.avgPrice; if(!avg)return NaN; return (price/avg-1)*100*(TRADE.position<0?-1:1); }
+function placeOrder(side,price,opts={}){ if(!DATA.ticks.length)return false; const type=opts.type||'limit', role=opts.role||'order'; const qty=opts.qty!==undefined?opts.qty:getTradeQty(); if(!qty||!Number.isFinite(price)||price<=0){alert("株数と価格を確認してください");return false} price=snapPrice(price); const tick=DATA.ticks[idx]; const order={id:TRADE.nextOrderId++,side,qty,price,type,role,createdMs:tick[5]}; if(orderHits(order,tick)){ return executeTrade(side,orderQty(order),tick[1],tick[5],kindLabel(order)+'即時'); } TRADE.pending.push(order); updateTradeUI(); renderMainChart(true); return true; }
+function placeLimit(side){ placeOrder(side,getLimitPrice()); }
+// TP/LC: 買い建てなら TP=売り指値(上)・LC=売り逆指値(下)、売り建てなら TP=買い指値(下)・LC=買い逆指値(上)。数量は常に保有全量
+function ensureExitOrders(){ const pos=TRADE.position; if(pos===0||!DATA.ticks.length)return; const long=pos>0, side=long?'sell':'buy'; const has=r=>TRADE.pending.some(o=>o.role===r); const tp=cleanNum(document.getElementById('tpPct').value), lc=cleanNum(document.getElementById('lcPct').value); const ms=DATA.ticks[idx][5], avg=TRADE.avgPrice; if(!has('tp')&&Number.isFinite(tp)&&tp>0)TRADE.pending.push({id:TRADE.nextOrderId++,side,qty:'all',price:snapPrice(avg*(1+(long?tp:-tp)/100),long?'up':'down'),type:'limit',role:'tp',createdMs:ms}); if(!has('lc')&&Number.isFinite(lc)&&lc>0)TRADE.pending.push({id:TRADE.nextOrderId++,side,qty:'all',price:snapPrice(avg*(1-(long?lc:-lc)/100),long?'down':'up'),type:'stop',role:'lc',createdMs:ms}); }
+function setExitOrder(role,price){ const pos=TRADE.position; if(pos===0||!DATA.ticks.length)return; TRADE.pending=TRADE.pending.filter(o=>o.role!==role); TRADE.pending.push({id:TRADE.nextOrderId++,side:pos>0?'sell':'buy',qty:'all',price:snapPrice(price),type:role==='lc'?'stop':'limit',role,createdMs:DATA.ticks[idx][5]}); updateTradeUI(); renderMainChart(true); }
+function processPendingOrders(tick){
+  if(!TRADE.pending.length)return;
+  for(const o of TRADE.pending.slice()){
+    if(!TRADE.pending.includes(o))continue;           // 先に約定した注文の連鎖で消えた（TP/LC の OCO など）
+    if(!orderHits(o,tick))continue;
+    TRADE.pending=TRADE.pending.filter(x=>x!==o);      // executeTrade 内の syncExitOrders が正しい pending を見られるよう先に外す
+    const q=orderQty(o); if(q>0)executeTrade(o.side,q,o.type==='stop'?tick[1]:o.price,tick[5],kindLabel(o),true);
+  }
+  updateTradeUI();
+}
+function visibleBars(bars){ if(document.getElementById("windowMode").value==="all")return bars; const keep=barMinutes===1?100:85; return bars.slice(Math.max(0,bars.length-keep)); }
+function getAxisRange(bars){ if(!bars.length)return [0,1]; let minP=Infinity,maxP=-Infinity; for(const b of bars){minP=Math.min(minP,b.low);maxP=Math.max(maxP,b.high);} const pad=Math.max(1,(maxP-minP)*0.08); return [minP-pad,maxP+pad]; }
+function finiteValues(values){return values.filter(v=>Number.isFinite(v));}
+function paddedRangeIncludeZero(values){
+  const vals=finiteValues(values);
+  if(!vals.length)return null;
+  let minV=Math.min(0,...vals), maxV=Math.max(0,...vals);
+  const absMax=Math.max(Math.abs(minV),Math.abs(maxV),1e-6);
+  if(minV===maxV){const pad=absMax*0.30; return [minV-pad,maxV+pad];}
+  const span=maxV-minV;
+  const pad=Math.max(span*0.14,absMax*0.03,1e-9);
+  return [minV-pad,maxV+pad];
+}
+function getVolumePlot(bars){
+  const raw=bars.map(b=>Number.isFinite(b.volume)?b.volume:0);
+  const maxRaw=Math.max(1,...raw);
+  const mode=document.getElementById('volumeScaleMode')?.value || 'sqrt';
+  if(mode==='raw')return {y:raw,raw,range:[0,maxRaw*4]};
+  const y=raw.map(v=>Math.sqrt(Math.max(0,v)));
+  const maxY=Math.max(1,...y);
+  return {y,raw,range:[0,maxY*1.15]};
+}
+function baseLayout(title){ return {margin:{l:52,r:44,t:16,b:38},paper_bgcolor:"#202b31",plot_bgcolor:"#202b31",font:{color:"#dce5e9"},xaxis:{rangeslider:{visible:false},gridcolor:"#43545c",tickfont:{size:11},showspikes:true,spikemode:"across",spikesnap:"cursor",spikethickness:1,spikedash:"dot",spikecolor:"#dce5e9"},yaxis:{gridcolor:"#66777f",tickformat:",d",showspikes:true,spikemode:"across",spikesnap:"cursor",spikethickness:1,spikedash:"dot",spikecolor:"#dce5e9"},showlegend:true,legend:{orientation:"h",x:0,y:1.05},dragmode:"pan",title:{text:title,font:{size:13}} }; }
+function renderEmpty(divId, text){ setHoverData(divId,null,null); Plotly.react(divId,[],{paper_bgcolor:"#202b31",plot_bgcolor:"#202b31",font:{color:"#dce5e9"},margin:{l:20,r:20,t:20,b:20},annotations:[{text, xref:"paper", yref:"paper", x:.5, y:.5, showarrow:false, font:{size:18}}]},{displayModeBar:false,responsive:true}); }
+// ---- パネル配置（paper 座標）。SQZ / RS を閉じた分だけ価格パネルを広げる ----
+function panelLayout(){
+  const showSqz=document.getElementById('showSqz')?.checked!==false, showRs=document.getElementById('showRs')?.checked!==false;
+  const H=0.18, GAP=0.06; let y=0; const P={showSqz,showRs,sqz:null,rs:null};
+  if(showRs){P.rs=[y,y+H]; y+=H+GAP;}
+  if(showSqz){P.sqz=[y,y+H]; y+=H+GAP;}
+  P.vol=[y,y+0.08]; P.price=[Math.min(y+0.10,0.9),1];
+  P.bottomAxis=showRs?'xaxis3':showSqz?'xaxis2':'xaxis4'; // 一番下のパネルにだけ時刻ラベルを出す
+  return P;
+}
+// ---- 約定音（Web Audio、外部ファイル不要）。買い=高め、売り=低め、決済を含む約定は 2 音 ----
+let AUDIO=null;
+function ensureAudio(){ try{ if(!AUDIO)AUDIO=new (window.AudioContext||window.webkitAudioContext)(); if(AUDIO.state==='suspended')AUDIO.resume(); }catch(e){} }
+function playFillSound(side,isClose){
+  try{
+    ensureAudio(); if(!AUDIO)return;
+    const beep=(freq,at,dur=0.18)=>{ const o=AUDIO.createOscillator(), g=AUDIO.createGain(); o.type='sine'; o.frequency.setValueAtTime(freq,at); g.gain.setValueAtTime(0.0001,at); g.gain.exponentialRampToValueAtTime(0.3,at+0.01); g.gain.exponentialRampToValueAtTime(0.0001,at+dur); o.connect(g).connect(AUDIO.destination); o.start(at); o.stop(at+dur+0.02); };
+    const t=AUDIO.currentTime, base=side==='buy'?880:587;
+    beep(base,t); if(isClose)beep(base*1.25,t+0.16);
+  }catch(e){}
+}
+document.addEventListener('pointerdown',ensureAudio);
+function renderMainChart(force=false){
+  if(!DATA.ticks.length){renderEmpty('mainChart','銘柄CSVを読み込んでください'); return;}
+  const now=performance.now(); if(!force && (chartMouseDown || now-lastRender<120))return; lastRender=now;
+  const fullBars=buildLiveBars(idx), ind=computeIndicators(fullBars), sqz=computeSqzMom(fullBars), rs=computeRelativeStrength(fullBars);
+  const bars=visibleBars(fullBars); if(!bars.length){renderEmpty('mainChart','データがありません');return;}
+  const range=getAxisRange(bars), x=bars.map(b=>b.time);
+  const sqzVisible=bars.map(b=>sqz.val[b.index]);
+  const sqzRange=paddedRangeIncludeZero(sqzVisible);
+  const rsVisible=bars.map(b=>rs[b.index]);
+  const rsRange=paddedRangeIncludeZero(rsVisible);
+  const volPlot=getVolumePlot(bars), volCol=volumeColors(fullBars), PAN=panelLayout();
+  const closeAll=fullBars.map(b=>b.close), smaFast=smaSeries(closeAll,MA.fastLen), smaSlow=smaSeries(closeAll,MA.slowLen);
+  const traces=[];
+  traces.push({
+    type:'bar',
+    x,
+    y:volPlot.y,
+    customdata:volPlot.raw,
+    name:'出来高',
+    marker:{color:bars.map(b=>volCol[b.index])},
+    xaxis:'x4',
+    yaxis:'y4',
+    showlegend:false,
+    hovertemplate:'%{x}<br>出来高 %{customdata:,}<extra></extra>'
+  });
+  traces.push({type:'candlestick',x,open:bars.map(b=>b.open),high:bars.map(b=>b.high),low:bars.map(b=>b.low),close:bars.map(b=>b.close),name:'価格',xaxis:'x',yaxis:'y',increasing:{line:{color:COL.up},fillcolor:COL.up},decreasing:{line:{color:COL.down},fillcolor:COL.down}});
+  traces.push({type:'scatter',mode:'lines',x,y:bars.map(b=>b.vwap),name:'VWAP',line:{color:COL.vwap,width:2},xaxis:'x',yaxis:'y'});
+  traces.push({type:'scatter',mode:'lines',x,y:bars.map(b=>smaFast[b.index]),name:'SMA'+MA.fastLen,line:{color:COL.sma5,width:1.6},xaxis:'x',yaxis:'y'});
+  traces.push({type:'scatter',mode:'lines',x,y:bars.map(b=>smaSlow[b.index]),name:'SMA'+MA.slowLen,line:{color:COL.sma25,width:1.5},xaxis:'x',yaxis:'y'});
+  const shapes=[];
+  if(document.getElementById('showEH').checked){
+    const eX=[],eY=[],hX=[],hY=[];
+    const showBg=document.getElementById('showEhBg').checked;
+    // 背景帯: x 軸はカテゴリ軸なので、x0=x1 に同じ時刻を入れると幅 0 で見えない（上流のバグ）。
+    // カテゴリ番号 ±0.5 で 1 本分の幅にし、連続する同じ状態はひとつの矩形にまとめる
+    let band=null; const flush=()=>{ if(band){ shapes.push({type:'rect',xref:'x',yref:'paper',x0:band.from-0.5,x1:band.to+0.5,y0:PAN.price[0],y1:1,layer:'below',fillcolor:band.state===3?'rgba(190,35,35,.22)':'rgba(230,190,45,.18)',line:{width:0}}); band=null; } };
+    bars.forEach((b,i)=>{
+      const s=ind[b.index]; if(!s){flush();return;} const pad=(range[1]-range[0]);
+      if(s.newE){eX.push(b.time);eY.push(b.low-pad*0.03)}
+      if(s.newH){hX.push(b.time);hY.push(b.low-pad*0.03)}
+      const st=showBg&&(s.state===2||s.state===3)?s.state:0;
+      if(st && band && band.state===st){ band.to=i; }
+      else { flush(); if(st)band={state:st,from:i,to:i}; }
+    });
+    flush();
+    if(eX.length)traces.push({type:'scatter',mode:'markers+text',x:eX,y:eY,text:eX.map(()=> 'E'),textposition:'middle center',name:'E',marker:{size:18,color:'#f0d84d',symbol:'circle'},textfont:{color:'#111',size:11},xaxis:'x',yaxis:'y'});
+    if(hX.length)traces.push({type:'scatter',mode:'markers+text',x:hX,y:hY,text:hX.map(()=> 'H'),textposition:'middle center',name:'H',marker:{size:18,color:'#d94a4a',symbol:'circle'},textfont:{color:'#fff',size:11},xaxis:'x',yaxis:'y'});
+  }
+  if(TRADE.history.length){
+    const byKey=new Set(bars.map(b=>b.key)); const bx=[],by=[],sx=[],sy=[];
+    for(const tr of TRADE.history){const key=minuteBucket(tr.ms,barMinutes); if(!byKey.has(key))continue; const label=fmtBucket(key); if(tr.side==='buy'){bx.push(label);by.push(tr.price)} else {sx.push(label);sy.push(tr.price)}}
+    if(bx.length)traces.push({type:'scatter',mode:'markers',x:bx,y:by,name:'買',marker:{size:12,symbol:'triangle-up',color:COL.plus,line:{color:'#111',width:1}},xaxis:'x',yaxis:'y'});
+    if(sx.length)traces.push({type:'scatter',mode:'markers',x:sx,y:sy,name:'売',marker:{size:12,symbol:'triangle-down',color:COL.minus,line:{color:'#111',width:1}},xaxis:'x',yaxis:'y'});
+  }
+  const annotations=[];
+  if(PAN.showSqz){
+    traces.push({type:'bar',x,y:bars.map(b=>sqz.val[b.index]),name:'SQZMOM',marker:{color:bars.map(b=>sqz.bcolors[b.index])},xaxis:'x2',yaxis:'y2',showlegend:false});
+    traces.push({type:'scatter',mode:'markers',x,y:bars.map(()=>0),name:'SQZ',marker:{symbol:'cross',size:7,color:bars.map(b=>sqz.zcolors[b.index])},xaxis:'x2',yaxis:'y2',showlegend:false});
+    annotations.push({text:'SQZMOM_LB',xref:'paper',yref:'paper',x:0,y:PAN.sqz[1]-0.05,xanchor:'left',yanchor:'bottom',showarrow:false,font:{size:11,color:'#b4c0c5'}});
+  }
+  if(PAN.showRs){
+    const rsX=[],rsPos=[],rsNeg=[];
+    for(const b of bars){const v=rs[b.index]; rsX.push(b.time); const f=Number.isFinite(v); rsPos.push(f?Math.max(v,0):NaN); rsNeg.push(f?Math.min(v,0):NaN);}
+    traces.push({type:'scatter',mode:'lines',x:rsX,y:rsPos,name:'RS+',fill:'tozeroy',fillcolor:'rgba(255,82,82,0.35)',line:{color:COL.upStrong,width:1.6},xaxis:'x3',yaxis:'y3',showlegend:false,hoverinfo:'skip'});
+    traces.push({type:'scatter',mode:'lines',x:rsX,y:rsNeg,name:'RS-',fill:'tozeroy',fillcolor:'rgba(61,220,132,0.35)',line:{color:COL.downStrong,width:1.6},xaxis:'x3',yaxis:'y3',showlegend:false,hoverinfo:'skip'});
+    traces.push({type:'scatter',mode:'lines',x:rsX,y:rsX.map((_,i)=>Number.isFinite(rs[bars[i].index])?rs[bars[i].index]:NaN),name:'RS vs '+refName(),line:{color:'rgba(0,0,0,0)',width:0},xaxis:'x3',yaxis:'y3',showlegend:false,hovertemplate:'RS %{y:.2%}<extra></extra>'});
+    shapes.push({type:'line',xref:'x3',yref:'y3',x0:x[0],x1:x[x.length-1],y0:0,y1:0,line:{color:'#a95c8d',width:1.5}});
+    annotations.push({text:'Relative Strength vs '+refName()+' / '+getRangeInt('rsLength',20),xref:'paper',yref:'paper',x:0,y:PAN.rs[1]-0.045,xanchor:'left',yanchor:'bottom',showarrow:false,font:{size:11,color:'#b4c0c5'}});
+  }
+  if(!REFDATA.ticks.length){annotations.push({text:'参照CSV未読込：E/H・RSは未判定',xref:'paper',yref:'paper',x:.99,y:.98,xanchor:'right',yanchor:'top',showarrow:false,font:{size:12,color:'#ffbf7a'}});}
+  else { const lastSignal=ind[ind.length-1]; if(lastSignal && Number.isFinite(lastSignal.refNikkeiPct))annotations.push({text:refName()+' '+refLabel()+' '+fmtPct(lastSignal.refNikkeiPct),xref:'paper',yref:'paper',x:.99,y:.98,xanchor:'right',yanchor:'top',showarrow:false,font:{size:12,color:lastSignal.refNikkeiPct>=0?COL.plus:COL.minus}}); }
+  addCurrentPriceLine(shapes,annotations);
+  addOrderLines(shapes,annotations,range);
+  const commonX={gridcolor:'#43545c',tickfont:{size:11},showspikes:true,spikemode:'across',spikesnap:'cursor',spikethickness:1,spikedash:'dot',spikecolor:'#dce5e9',rangeslider:{visible:false}};
+  const layout={margin:{l:52,r:ORDER_LABEL_MARGIN,t:16,b:35},paper_bgcolor:'#202b31',plot_bgcolor:'#202b31',font:{color:'#dce5e9'},
+    xaxis:{...commonX,domain:[0,1],anchor:'y',showticklabels:false},
+    yaxis:{domain:PAN.price,range,gridcolor:'#66777f',tickformat:',d'},
+    xaxis4:{...commonX,domain:[0,1],anchor:'y4',matches:'x',showticklabels:PAN.bottomAxis==='xaxis4',showgrid:false},
+    yaxis4:{domain:PAN.vol,anchor:'x4',range:volPlot.range,showgrid:false,zeroline:false,showticklabels:false,fixedrange:true},
+    showlegend:true,legend:{orientation:'h',x:0,y:1.06},dragmode:'pan',shapes,annotations
+  };
+  if(PAN.showSqz){
+    layout.xaxis2={...commonX,domain:[0,1],anchor:'y2',matches:'x',showticklabels:PAN.bottomAxis==='xaxis2'};
+    layout.yaxis2={domain:PAN.sqz,range:sqzRange || undefined,gridcolor:'#5b6b72',zeroline:true,zerolinecolor:'#888',tickfont:{size:10}};
+  }
+  if(PAN.showRs){
+    layout.xaxis3={...commonX,domain:[0,1],anchor:'y3',matches:'x',showticklabels:PAN.bottomAxis==='xaxis3'};
+    layout.yaxis3={domain:PAN.rs,range:rsRange || undefined,gridcolor:'#5b6b72',tickformat:'.2%',zeroline:true,zerolinecolor:'#a95c8d',tickfont:{size:10}};
+  }
+  silenceHover(traces);
+  Plotly.react('mainChart',traces,layout,{displayModeBar:false,responsive:true,scrollZoom:true});
+  document.getElementById('mainChartTitle').textContent=(DATA.code?DATA.code+' ':'')+(DATA.symbol||'銘柄チャート');
+  setHoverData('mainChart','mainChartMeta',{bars,smaFast,smaSlow,vol:volPlot.raw,sqz:PAN.showSqz?sqz.val:null,rs:PAN.showRs?rs:null,ind:document.getElementById('showEH').checked?ind:null});
+}
+function renderRefChart(){
+  if(!REFDATA.ticks.length){renderEmpty('refChart','参照CSV（1570 など）を読み込んでください'); return;}
+  if(!DATA.ticks.length){renderEmpty('refChart',refName()+' を読込済（'+REFDATA.tickCount.toLocaleString()+'件）。銘柄CSVを読み込むと時刻を同期して表示します'); return;} // 主銘柄が無いと同期先が無いので全日分は出さない
+  const syncMs=DATA.ticks[idx][5];
+  const barsAll=buildRefBarsUptoMs(syncMs), bars=visibleBars(barsAll);
+  if(!bars.length){renderEmpty('refChart', barsAll.length?'参照データがありません':refName()+' はまだ約定がありません'); return;}
+  const close=barsAll.map(b=>b.close), smaFast=smaSeries(close,MA.fastLen), smaSlow=smaSeries(close,MA.slowLen), sqz=computeSqzMom(barsAll);
+  const range=getAxisRange(bars), x=bars.map(b=>b.time), traces=[];
+  const sqzVisible=bars.map(b=>sqz.val[b.index]);
+  const sqzRange=paddedRangeIncludeZero(sqzVisible);
+  traces.push({type:'candlestick',x,open:bars.map(b=>b.open),high:bars.map(b=>b.high),low:bars.map(b=>b.low),close:bars.map(b=>b.close),name:refName(),xaxis:'x',yaxis:'y',increasing:{line:{color:COL.up},fillcolor:COL.up},decreasing:{line:{color:COL.down},fillcolor:COL.down}});
+  traces.push({type:'scatter',mode:'lines',x,y:bars.map(b=>b.vwap),name:'VWAP',line:{color:COL.vwap,width:2},xaxis:'x',yaxis:'y'});
+  traces.push({type:'scatter',mode:'lines',x,y:bars.map(b=>smaFast[b.index]),name:'SMA'+MA.fastLen,line:{color:COL.sma5,width:1.6},xaxis:'x',yaxis:'y'});
+  traces.push({type:'scatter',mode:'lines',x,y:bars.map(b=>smaSlow[b.index]),name:'SMA'+MA.slowLen,line:{color:COL.sma25,width:1.5},xaxis:'x',yaxis:'y'});
+  const PAN=panelLayout(), showSqz=PAN.showSqz, annotations=[]; // 銘柄チャートと同じ配置（価格・出来高・SQZ・RS すべて同じ domain）にして上下を揃える
+  // 出来高（銘柄チャートと同じ規則: 直前の足以上なら赤、少なければ緑。圧縮/通常の切替も共通）
+  const volPlot=getVolumePlot(bars), volCol=volumeColors(barsAll);
+  traces.push({type:'bar',x,y:volPlot.y,customdata:volPlot.raw,name:'出来高',marker:{color:bars.map(b=>volCol[b.index])},xaxis:'x4',yaxis:'y4',showlegend:false,hovertemplate:'%{x}<br>出来高 %{customdata:,}<extra></extra>'});
+  if(showSqz){
+    traces.push({type:'bar',x,y:bars.map(b=>sqz.val[b.index]),name:'SQZMOM',marker:{color:bars.map(b=>sqz.bcolors[b.index])},xaxis:'x2',yaxis:'y2',showlegend:false});
+    traces.push({type:'scatter',mode:'markers',x,y:bars.map(()=>0),name:'SQZ',marker:{symbol:'cross',size:7,color:bars.map(b=>sqz.zcolors[b.index])},xaxis:'x2',yaxis:'y2',showlegend:false});
+    annotations.push({text:'SQZMOM_LB',xref:'paper',yref:'paper',x:0,y:PAN.sqz[1]-0.05,xanchor:'left',yanchor:'bottom',showarrow:false,font:{size:11,color:'#b4c0c5'}});
+  }
+  // RS（参照 ÷ 銘柄）。銘柄チャートと同じ位置・同じ描き方
+  let rsRange=null, refRs=null;
+  if(PAN.showRs){
+    const rs=computeRefRelativeStrength(barsAll); refRs=rs;
+    const rsX=[],rsPos=[],rsNeg=[],rsRaw=[];
+    for(const b of bars){const v=rs[b.index]; rsX.push(b.time); const f=Number.isFinite(v); rsPos.push(f?Math.max(v,0):NaN); rsNeg.push(f?Math.min(v,0):NaN); rsRaw.push(f?v:NaN);}
+    rsRange=paddedRangeIncludeZero(rsRaw);
+    traces.push({type:'scatter',mode:'lines',x:rsX,y:rsPos,name:'RS+',fill:'tozeroy',fillcolor:'rgba(255,82,82,0.35)',line:{color:COL.upStrong,width:1.6},xaxis:'x3',yaxis:'y3',showlegend:false,hoverinfo:'skip'});
+    traces.push({type:'scatter',mode:'lines',x:rsX,y:rsNeg,name:'RS-',fill:'tozeroy',fillcolor:'rgba(61,220,132,0.35)',line:{color:COL.downStrong,width:1.6},xaxis:'x3',yaxis:'y3',showlegend:false,hoverinfo:'skip'});
+    traces.push({type:'scatter',mode:'lines',x:rsX,y:rsRaw,name:'RS',line:{color:'rgba(0,0,0,0)',width:0},xaxis:'x3',yaxis:'y3',showlegend:false,hovertemplate:'RS %{y:.2%}<extra></extra>'});
+    annotations.push({text:'Relative Strength '+refName()+' vs '+(DATA.code||'銘柄')+' / '+getRangeInt('rsLength',20),xref:'paper',yref:'paper',x:0,y:PAN.rs[1]-0.045,xanchor:'left',yanchor:'bottom',showarrow:false,font:{size:11,color:'#b4c0c5'}});
+  }
+  const last=barsAll[barsAll.length-1];
+  if(last && barsAll.length>IND.refLookback){ const prev=barsAll[barsAll.length-1-IND.refLookback]; const refNikkeiPct=(last.close/prev.close-1)*100/refLeverage(); annotations.push({text:refLabel()+' '+fmtPct(refNikkeiPct),xref:'paper',yref:'paper',x:.99,y:.98,xanchor:'right',yanchor:'top',showarrow:false,font:{size:12,color:refNikkeiPct>=0?COL.plus:COL.minus}}); }
+  const commonX={gridcolor:'#43545c',tickfont:{size:11},showspikes:true,spikemode:'across',spikesnap:'cursor',spikethickness:1,spikedash:'dot',spikecolor:'#dce5e9',rangeslider:{visible:false}};
+  const layout={margin:{l:52,r:44,t:16,b:35},paper_bgcolor:'#202b31',plot_bgcolor:'#202b31',font:{color:'#dce5e9'},
+    xaxis:{...commonX,domain:[0,1],anchor:'y',showticklabels:false},
+    yaxis:{domain:PAN.price,range,gridcolor:'#66777f',tickformat:',d'},
+    xaxis4:{...commonX,domain:[0,1],anchor:'y4',matches:'x',showticklabels:PAN.bottomAxis==='xaxis4',showgrid:false},
+    yaxis4:{domain:PAN.vol,anchor:'x4',range:volPlot.range,showgrid:false,zeroline:false,showticklabels:false,fixedrange:true},
+    showlegend:true,legend:{orientation:'h',x:0,y:1.06},dragmode:'pan',annotations};
+  if(showSqz){
+    layout.xaxis2={...commonX,domain:[0,1],anchor:'y2',matches:'x',showticklabels:PAN.bottomAxis==='xaxis2'};
+    layout.yaxis2={domain:PAN.sqz,range:sqzRange || undefined,gridcolor:'#5b6b72',zeroline:true,zerolinecolor:'#888',tickfont:{size:10}};
+  }
+  if(PAN.showRs){
+    layout.xaxis3={...commonX,domain:[0,1],anchor:'y3',matches:'x',showticklabels:PAN.bottomAxis==='xaxis3'};
+    layout.yaxis3={domain:PAN.rs,range:rsRange || undefined,gridcolor:'#5b6b72',tickformat:'.2%',zeroline:true,zerolinecolor:'#a95c8d',tickfont:{size:10}};
+  }
+  silenceHover(traces);
+  Plotly.react('refChart',traces,layout,{displayModeBar:false,responsive:true,scrollZoom:true});
+  document.getElementById('refChartTitle').textContent=refName()+(REFDATA.tradeDate ? ' / '+REFDATA.tradeDate : '');
+  setHoverData('refChart','refChartMeta',{bars,smaFast,smaSlow,vol:volPlot.raw,sqz:showSqz?sqz.val:null,rs:refRs});
+}
+function renderAllCharts(force=false){ renderMainChart(force); renderRefChart(); }
+function addTickToTape(t){ const tr=document.createElement('tr'),dir=t[4]; tr.className=dir>0?'up':dir<0?'down':'flat'; tr.innerHTML='<td class="price">'+t[1].toLocaleString()+'</td><td class="qty">'+t[2].toLocaleString()+'</td><td class="amount">'+t[3].toFixed(4)+'</td><td class="time">'+t[0]+'</td>'; tapeBody.prepend(tr); while(tapeBody.children.length>120)tapeBody.removeChild(tapeBody.lastChild); }
+function rebuildTapeAround(){ tapeBody.innerHTML=''; for(let i=Math.max(0,idx-80);i<=idx;i++)addTickToTape(DATA.ticks[i]); }
+function updateHeader(){ if(!DATA.ticks.length)return; const t=DATA.ticks[idx], price=t[1], vwap=t[7]; nowTime.textContent=t[0]; nowPrice.textContent=price.toLocaleString(); document.getElementById('vwapNow').textContent=fmtNum(vwap,2); const devPct=(price/vwap-1)*100; setMetric('vwapDev',fmtPct(devPct),devPct); const prev=cleanNum(document.getElementById('prevClose').value); const diff=Number.isFinite(prev)?price-prev:NaN; const diffPct=Number.isFinite(prev)?(price/prev-1)*100:NaN; setMetric('chg',Number.isFinite(diff)?fmtSigned(diff,0):'-',diff); setMetric('chgPct',Number.isFinite(diffPct)?fmtPct(diffPct):'-',diffPct); slider.value=idx; progress.textContent=idx.toLocaleString()+' / '+DATA.tickCount.toLocaleString(); clock.textContent=fmtMs(t[5]); updateTradeUI(); }
+function advanceToPlayMs(ms){ currentPlayMs=Math.min(ms,DATA.summary.endPlayMs); const nextIdx=findTickIndexByPlayMs(currentPlayMs); if(nextIdx>idx){ for(let i=idx+1;i<=nextIdx;i++){ idx=i; processPendingOrders(DATA.ticks[i]); addTickToTape(DATA.ticks[i]); } } else { idx=nextIdx; rebuildTapeAround(); } updateHeader(); renderAllCharts(false); if(currentPlayMs>=DATA.summary.endPlayMs)pause(); }
+function play(){ if(!DATA.ticks.length)return; pause(); playBaseReal=performance.now(); playBaseMarket=currentPlayMs; const speed=Number(document.getElementById('speed').value); timer=setInterval(()=>{ const elapsed=performance.now()-playBaseReal; advanceToPlayMs(playBaseMarket+elapsed*speed); },35); updatePlayButton(); }
+function pause(){ if(timer)clearInterval(timer); timer=null; updatePlayButton(); }
+function togglePlay(){ if(timer)pause(); else play(); }
+function updatePlayButton(){ const b=document.getElementById('playToggle'); if(!b)return; const playing=!!timer; b.textContent=playing?'■ 停止':'▶ 再生'; b.classList.toggle('playing',playing); b.classList.toggle('primary',!playing); }
+// 足単位のステップ。dir>0: 今の足の最後の tick まで進む（既に末尾なら次に約定がある足の末尾へ）。約定判定は再生と同じ経路
+// dir<0: 前の足の最後の tick へ戻る（戻りは約定判定なし・スライダー操作と同じ扱い）
+function stepBar(dir){
+  if(!DATA.ticks.length)return; pause();
+  const T=DATA.ticks, bar=barMinutes*60000, start=minuteBucket(T[idx][5],barMinutes);
+  if(dir>0){
+    let endIdx=findTickIndexByMs(DATA,start+bar-1);
+    if(endIdx<=idx){ const nextFirst=endIdx+1; if(nextFirst>=T.length)return; endIdx=findTickIndexByMs(DATA,minuteBucket(T[nextFirst][5],barMinutes)+bar-1); }
+    advanceToPlayMs(T[endIdx][6]);
+  } else {
+    const target=Math.max(0,findTickIndexByMs(DATA,start-1));
+    idx=target; currentPlayMs=T[idx][6]; rebuildTapeAround(); updateHeader(); renderAllCharts(true);
+  }
+}
+function resetReplay(){ pause(); if(!DATA.ticks.length){ renderAllCharts(true); return; } idx=0; currentPlayMs=DATA.summary.startPlayMs; tapeBody.innerHTML=''; addTickToTape(DATA.ticks[0]); updateHeader(); renderAllCharts(true); }
+function installData(d){ DATA=d; DATA.tickSize=inferTickSize(DATA.ticks); idx=0; currentPlayMs=DATA.summary.startPlayMs; document.getElementById('stockCode').value=DATA.code||''; document.getElementById('tradeDate').value=DATA.tradeDate||''; document.getElementById('symbolName').value=DATA.symbol||''; updateKabutanLinks(DATA.code); const sub=[DATA.market, DATA.industry].filter(Boolean).join(' / '); document.getElementById('titleSymbol').textContent='● '+(DATA.code?DATA.code+' ':'')+DATA.symbol+(sub?' ['+sub+']':'')+(DATA.tradeDate?' / '+DATA.tradeDate:''); slider.max=DATA.tickCount-1; slider.value=0; resetReplay(); resetTrading(); }
+async function loadFile(file){ const buf=await file.arrayBuffer(); const text=new TextDecoder('utf-8').decode(buf); const rows=parseCSV(text); const data=buildDataFromRows(rows,file.name); installData(data); }
+async function loadRefFile(file){ const buf=await file.arrayBuffer(); const text=new TextDecoder('utf-8').decode(buf); const rows=parseCSV(text); const data=buildDataFromRows(rows,file.name); REFDATA=data; const lev=REF_LEVERAGE[data.code]; document.getElementById('refLeverage').value=lev!==undefined?lev:1; const st=document.getElementById('refStatus'); st.textContent=refName()+' 読込済 / '+data.tickCount.toLocaleString()+'件'+(lev===undefined?'（倍率1）':''); st.classList.remove('refMissing'); st.classList.add('refReady'); renderAllCharts(true); }
+document.getElementById('csvFile').addEventListener('change',e=>{ const file=e.target.files[0]; if(!file)return; loadFile(file).catch(err=>alert('CSV読込エラー: '+err.message)); });
+document.getElementById('refCsvFile').addEventListener('change',e=>{ const file=e.target.files[0]; if(!file)return; loadRefFile(file).catch(err=>alert('参照CSV読込エラー: '+err.message)); });
+document.getElementById('prevClose').addEventListener('input', updateHeader);
+document.getElementById('symbolName').addEventListener('change',()=>{ if(DATA.ticks.length){ DATA.symbol=document.getElementById('symbolName').value.trim()||DATA.symbol; const sub=[DATA.market, DATA.industry].filter(Boolean).join(' / '); document.getElementById('titleSymbol').textContent='● '+(DATA.code?DATA.code+' ':'')+DATA.symbol+(sub?' ['+sub+']':'')+(DATA.tradeDate?' / '+DATA.tradeDate:''); document.getElementById('mainChartTitle').textContent=(DATA.code?DATA.code+' ':'')+DATA.symbol; } });
+document.getElementById('playToggle').onclick=togglePlay;
+document.addEventListener('keydown',e=>{ if(e.code==='Space' && !/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)){ e.preventDefault(); togglePlay(); } else if((e.code==='ArrowRight'||e.code==='ArrowLeft') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)){ e.preventDefault(); stepBar(e.code==='ArrowRight'?1:-1); } });
+document.getElementById('nextBar').onclick=()=>stepBar(1); document.getElementById('prevBar').onclick=()=>stepBar(-1);
+document.getElementById('speed').onchange=()=>{ if(timer)play(); };
+document.getElementById('barMode').onchange=e=>{ barMinutes=Number(e.target.value); renderAllCharts(true); updateTradeLog(); };
+document.getElementById('windowMode').onchange=()=>renderAllCharts(true);
+document.getElementById('volumeScaleMode').onchange=()=>renderAllCharts(true);
+document.getElementById('showEH').onchange=()=>renderAllCharts(true);
+document.getElementById('showEhBg').onchange=()=>renderAllCharts(true);
+document.getElementById('showSqz').onchange=()=>renderAllCharts(true);
+document.getElementById('showRs').onchange=()=>renderAllCharts(true);
+document.getElementById('refMinMovePct').addEventListener('input',()=>renderAllCharts(true));
+document.getElementById('refLeverage').addEventListener('input',()=>renderAllCharts(true));
+document.getElementById('sqzLength').addEventListener('input',()=>{updateSliderLabels();renderAllCharts(true);});
+document.getElementById('rsLength').addEventListener('input',()=>{updateSliderLabels();renderAllCharts(true);});
+document.getElementById('setLimitNow').onclick=()=>{ const p=getCurrentPrice(); if(Number.isFinite(p))document.getElementById('limitPrice').value=p; };
+document.getElementById('buyMarket').onclick=()=>{ if(DATA.ticks.length)executeTrade('buy',getTradeQty(),DATA.ticks[idx][1],DATA.ticks[idx][5],'買成行'); };
+document.getElementById('sellMarket').onclick=()=>{ if(DATA.ticks.length)executeTrade('sell',getTradeQty(),DATA.ticks[idx][1],DATA.ticks[idx][5],'売成行'); };
+document.getElementById('buyLimit').onclick=()=>placeLimit('buy');
+document.getElementById('sellLimit').onclick=()=>placeLimit('sell');
+document.getElementById('cancelOrders').onclick=()=>{ TRADE.pending=[]; updateTradeUI(); renderAllCharts(true); };
+document.getElementById('resetTrading').onclick=resetTrading;
+slider.oninput=e=>{ if(!DATA.ticks.length)return; pause(); idx=Number(e.target.value); currentPlayMs=DATA.ticks[idx][6]; rebuildTapeAround(); updateHeader(); renderAllCharts(true); };
+// ---- 注文ライン（建玉平均・指値・TP/LC）を shapes/annotations に追加。TP/LC/指値はドラッグで価格変更できる ----
+const ORDER_LABEL_MARGIN=170; // 建玉・TP/LC ラベルはローソク足に被らないよう右マージン（プロット外）に出す。常に固定幅
+let chartMouseDown=false;   // Plotly のパン操作中だけ通常再描画を止める（再描画すると表示範囲が戻って崩れる）。注文ラインのドラッグは自前処理なので止めない
+// 現在値の水平線と右マージンの価格ラベル（オレンジ、`COL.now`）
+function addCurrentPriceLine(shapes,annotations){
+  const t=DATA.ticks[idx]; if(!t)return; const price=t[1]; const color=COL.now;
+  shapes.push({type:"line",xref:"paper",yref:"y",x0:0,x1:1,y0:price,y1:price,line:{color,width:1,dash:"dash"},layer:"above"});
+  annotations.push({text:fmtNum(price,priceDecimals()),xref:"paper",yref:"y",x:1,y:price,xanchor:"left",yanchor:"middle",xshift:6,showarrow:false,font:{size:12,color:"#111"},bgcolor:color,borderpad:3});
+}
+function addOrderLines(shapes,annotations,range){
+  if(!TRADE.position && !TRADE.pending.length)return;
+  const pd=priceDecimals();
+  const lineFor=(price,color,dash,order,label)=>{
+    shapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:price,y1:price,line:{color,width:1.5,dash}});
+    annotations.push({text:label,xref:'paper',yref:'y',x:1,y:price,xanchor:'left',yanchor:'middle',xshift:6,showarrow:false,font:{size:11,color},bgcolor:'rgba(27,37,43,.85)',borderpad:2});
+    if(range){ const pad=(range[1]-range[0])*0.04; if(price<range[0]+pad)range[0]=price-pad; if(price>range[1]-pad)range[1]=price+pad; }
+  };
+  if(TRADE.position!==0) lineFor(TRADE.avgPrice,COL.avg,'dot',null,'建玉 '+fmtPosition(TRADE.position)+' @ '+fmtNum(TRADE.avgPrice,pd));
+  for(const o of TRADE.pending){
+    const pct=TRADE.position!==0&&TRADE.avgPrice?' ('+fmtPct(pctFromAvg(o.price))+')':'';
+    const q=orderQty(o);
+    const label=o.role==='tp'?'TP '+fmtNum(o.price,pd)+pct : o.role==='lc'?'LC '+fmtNum(o.price,pd)+pct : kindLabel(o)+' '+fmtNum(o.price,pd)+' × '+fmtNum(q,0);
+    const color=o.role==='tp'?COL.tp:o.role==='lc'?COL.lc:COL.entry;
+    lineFor(o.price,color,(o.role==='tp'||o.role==='lc')?'dash':'solid',o,label+' ⇕');
+  }
+}
+// ---- マウス位置の価格を返す（価格パネル外なら NaN） ----
+function priceAtEvent(gd,e){
+  const fl=gd._fullLayout; if(!fl||!fl.yaxis||!fl.xaxis||typeof fl.yaxis.p2d!=='function')return NaN;
+  const r=gd.getBoundingClientRect(); const y=e.clientY-r.top, x=e.clientX-r.left; const ya=fl.yaxis, xa=fl.xaxis;
+  if(y<ya._offset||y>ya._offset+ya._length||x<xa._offset||x>xa._offset+xa._length)return NaN;
+  return ya.p2d(y-ya._offset);
+}
+// ---- 横方向クロスヘア（価格ライン＋左端の価格ラベル） ----
+function installCrosshair(divId){
+  const gd=document.getElementById(divId), wrap=gd.parentElement;
+  const line=document.createElement('div'); line.className='xhairLine'; const label=document.createElement('div'); label.className='xhairLabel';
+  wrap.appendChild(line); wrap.appendChild(label);
+  const hide=()=>{line.style.display='none'; label.style.display='none';};
+  gd.addEventListener('mousemove',e=>{
+    const price=priceAtEvent(gd,e); if(!Number.isFinite(price)){hide();return;}
+    const fl=gd._fullLayout, xa=fl.xaxis; const r=gd.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
+    const top=e.clientY-wr.top, left=(r.left-wr.left)+xa._offset;
+    line.style.top=top+'px'; line.style.left=left+'px'; line.style.width=xa._length+'px'; line.style.display='block';
+    label.textContent=fmtNum(price,priceDecimals()); label.style.top=top+'px'; label.style.right=(wr.width-left+2)+'px'; label.style.display='block';
+  });
+  // 一行表示: 価格パネルの外（出来高・SQZ・RS）でもカーソルの x 位置の足を出す
+  gd.addEventListener('mousemove',e=>{ const r=gd.getBoundingClientRect(); gd._hoverPx=e.clientX-r.left; updateHoverLine(gd); });
+  gd.addEventListener('mouseleave',()=>{ hide(); gd._hoverPx=null; updateHoverLine(gd); });
+}
+// ---- ホバー値の一行表示（chartHead 右側）。Plotly のツールチップは CSS で隠し、足の OHLC とインジケーターをまとめて出す ----
+function silenceHover(traces){ for(const t of traces){ if(t.hoverinfo!=='skip'){ t.hoverinfo='none'; delete t.hovertemplate; } } }
+const HOVER_DEFAULT={mainChartMeta:'VWAP / SMA5 / SMA25 / E/H ／ クリックで発注メニュー・TP/LC線はドラッグで変更',refChartMeta:'地合い参照（変化率÷倍率）'};
+function setHoverData(divId,metaId,data){ const gd=document.getElementById(divId); if(!gd)return; gd._hoverData=data; gd._hoverMeta=metaId||gd._hoverMeta; updateHoverLine(gd); }
+function hoveredBarIndex(gd){
+  const d=gd._hoverData; if(!d||!d.bars.length)return -1;
+  const px=gd._hoverPx, fl=gd._fullLayout, xa=fl&&fl.xaxis;
+  if(!Number.isFinite(px)||!xa||typeof xa.p2c!=='function'||px<xa._offset||px>xa._offset+xa._length)return d.bars.length-1;
+  const i=Math.round(xa.p2c(px-xa._offset)); // カテゴリ軸: p2c は表示中の足番号（小数）
+  return Math.max(0,Math.min(d.bars.length-1,i));
+}
+function updateHoverLine(gd){
+  const metaId=gd._hoverMeta, el=metaId&&document.getElementById(metaId); if(!el)return;
+  const d=gd._hoverData; if(!d||!d.bars.length){ el.textContent=HOVER_DEFAULT[metaId]||''; return; }
+  const i=hoveredBarIndex(gd), b=d.bars[i], k=b.index, pd=priceDecimals();
+  const kv=(key,val,cls)=>'<span class="hk">'+key+'</span><span'+(cls?' class="'+cls+'"':'')+'>'+val+'</span>';
+  const sign=v=>v>0?'hp':v<0?'hm':'';
+  let h='<span class="ht">'+b.time+'</span>';
+  h+=kv('O',fmtNum(b.open,pd))+kv('H',fmtNum(b.high,pd))+kv('L',fmtNum(b.low,pd))+kv('C',fmtNum(b.close,pd),sign(b.close-b.open));
+  h+=kv('出来高',fmtNum(d.vol[i],0));
+  h+=kv('VWAP',fmtNum(b.vwap,2))+kv('SMA'+MA.fastLen,fmtNum(d.smaFast[k],2))+kv('SMA'+MA.slowLen,fmtNum(d.smaSlow[k],2));
+  if(d.sqz){ const v=d.sqz[k]; h+=kv('SQZ',Number.isFinite(v)?fmtSigned(v,2):'-',sign(v)); }
+  if(d.rs){ const v=d.rs[k]; h+=kv('RS',Number.isFinite(v)?fmtPct(v*100):'-',sign(v)); }
+  if(d.ind){ const s=d.ind[k]; const st=s?(['-','W','E','H'][s.state]||'-'):'-'; h+=kv('E/H',st,s&&s.state===3?'hp':s&&s.state===2?'hm':''); if(s&&Number.isFinite(s.refNikkeiPct))h+=kv(refLabel(),fmtPct(s.refNikkeiPct),sign(s.refNikkeiPct)); }
+  el.innerHTML=h;
+}
+// ---- チャートクリックで発注メニュー ----
+function hideOrderMenu(){ document.getElementById('orderMenu').style.display='none'; }
+function showOrderMenu(price,e){
+  const menu=document.getElementById('orderMenu'), wrap=menu.parentElement, wr=wrap.getBoundingClientRect();
+  const cur=getCurrentPrice(), qty=getTradeQty(), pd=priceDecimals(), ms=DATA.ticks[idx][5];
+  const items=[];
+  items.push({cls:'buy',label:'買 指値 '+fmtNum(price,pd)+' × '+fmtNum(qty,0),fn:()=>placeOrder('buy',price)});
+  items.push({cls:'sell',label:'売 指値 '+fmtNum(price,pd)+' × '+fmtNum(qty,0),fn:()=>placeOrder('sell',price)});
+  if(price>cur)items.push({cls:'buy',label:'買 逆指値 '+fmtNum(price,pd)+' × '+fmtNum(qty,0),fn:()=>placeOrder('buy',price,{type:'stop'})});
+  if(price<cur)items.push({cls:'sell',label:'売 逆指値 '+fmtNum(price,pd)+' × '+fmtNum(qty,0),fn:()=>placeOrder('sell',price,{type:'stop'})});
+  items.push({sep:true});
+  items.push({cls:'buy',label:'買 成行 '+fmtNum(cur,pd)+' × '+fmtNum(qty,0),fn:()=>executeTrade('buy',qty,cur,ms,'買成行')});
+  items.push({cls:'sell',label:'売 成行 '+fmtNum(cur,pd)+' × '+fmtNum(qty,0),fn:()=>executeTrade('sell',qty,cur,ms,'売成行')});
+  if(TRADE.position!==0){
+    const closeSide=TRADE.position>0?'sell':'buy';
+    items.push({cls:closeSide,label:'全決済 成行（'+fmtPosition(TRADE.position)+'）',fn:()=>executeTrade(closeSide,Math.abs(TRADE.position),cur,ms,closeSide==='sell'?'売成行(決済)':'買成行(決済)')});
+    items.push({sep:true});
+    items.push({cls:'tp',label:'TP をここに '+fmtNum(price,pd),fn:()=>setExitOrder('tp',price)});
+    items.push({cls:'lc',label:'LC をここに '+fmtNum(price,pd),fn:()=>setExitOrder('lc',price)});
+  }
+  if(TRADE.pending.length){ items.push({sep:true}); items.push({cls:'',label:'全注文取消（'+TRADE.pending.length+'）',fn:()=>{TRADE.pending=[];updateTradeUI();renderMainChart(true);}}); }
+  openMenu('@ '+fmtNum(price,pd)+'　現在値 '+fmtNum(cur,pd),items,e);
+}
+// メニューの共通部分: 見出し + 項目（{cls,label,fn} / {sep:true}）をクリック位置に出す（はみ出す分は内側へ寄せる）
+function openMenu(head,items,e){
+  const menu=document.getElementById('orderMenu'), wrap=menu.parentElement, wr=wrap.getBoundingClientRect();
+  menu.innerHTML='<div class="omHead">'+head+'</div>'+items.map(it=>it.sep?'<div class="omSep"></div>':'<div class="omItem '+it.cls+'">'+it.label+'</div>').join('');
+  const nodes=menu.querySelectorAll('.omItem'); let k=0; for(const it of items){ if(it.sep)continue; nodes[k++].onclick=()=>{hideOrderMenu(); it.fn();}; }
+  menu.style.display='block';
+  let left=e.clientX-wr.left+6, top=e.clientY-wr.top+6;
+  if(left+menu.offsetWidth>wr.width)left=Math.max(0,wr.width-menu.offsetWidth-4);
+  if(top+menu.offsetHeight>wr.height)top=Math.max(0,wr.height-menu.offsetHeight-4);
+  menu.style.left=left+'px'; menu.style.top=top+'px';
+}
+// 注文ラインをクリック（ドラッグせずに離す）したときのメニュー: その注文の取消と全注文取消
+function orderTitle(o){ const pd=priceDecimals(); const q=o.qty==='all'?'全量':fmtNum(orderQty(o),0); return (o.role==='tp'?'TP ':o.role==='lc'?'LC ':kindLabel(o)+' ')+fmtNum(o.price,pd)+' × '+q; }
+function cancelOrder(o){ TRADE.pending=TRADE.pending.filter(x=>x!==o); updateTradeUI(); renderMainChart(true); }
+function showOrderLineMenu(o,e){
+  const items=[{cls:o.role==='tp'?'tp':o.role==='lc'?'lc':o.side==='buy'?'buy':'sell',label:'この注文を取消',fn:()=>cancelOrder(o)}];
+  if(TRADE.pending.length>1){ items.push({sep:true}); items.push({cls:'',label:'全注文取消（'+TRADE.pending.length+'）',fn:()=>{TRADE.pending=[];updateTradeUI();renderMainChart(true);}}); }
+  openMenu(orderTitle(o),items,e);
+}
+function installOrderMenu(){
+  const gd=document.getElementById('mainChart'), menu=document.getElementById('orderMenu'); let down=null;
+  gd.addEventListener('mousedown',e=>{ chartMouseDown=true; if(e.button!==0)return; const onShape=!!(e.target.closest&&e.target.closest('.shapelayer,.shape-group')); down={x:e.clientX,y:e.clientY,onShape}; });
+  window.addEventListener('mouseup',e=>{
+    chartMouseDown=false; if(!down)return; const d=down; down=null;
+    // Plotly はパン中に dragcover 要素を body に出すので、mouseup の target は gd の外になる。mousedown が gd 内だったことだけを条件にする
+    if(e.button!==0||d.onShape||Math.hypot(e.clientX-d.x,e.clientY-d.y)>4||!DATA.ticks.length)return;
+    const raw=priceAtEvent(gd,e); if(!Number.isFinite(raw)){hideOrderMenu();return;}
+    showOrderMenu(snapPrice(raw),e);
+  });
+  document.addEventListener('mousedown',e=>{ if(menu.style.display==='block' && !menu.contains(e.target))hideOrderMenu(); },true);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape')hideOrderMenu(); });
+  // ---- 注文ライン（TP/LC/指値）のドラッグ。Plotly のパンより先に capture 段階で捕まえて自前で処理する ----
+  const wrap=gd.parentElement;
+  const dragLine=document.createElement('div'); dragLine.className='xhairLine'; dragLine.style.borderTopStyle='dashed';
+  const dragLabel=document.createElement('div'); dragLabel.className='xhairLabel';
+  wrap.appendChild(dragLine); wrap.appendChild(dragLabel);
+  let drag=null; // {order, color}
+  const HIT_PX=7;
+  function orderNear(e){ // カーソルから HIT_PX 以内にある注文ラインを返す
+    const fl=gd._fullLayout; if(!fl||!fl.yaxis||typeof fl.yaxis.d2p!=='function')return null;
+    if(!Number.isFinite(priceAtEvent(gd,e)))return null;
+    const r=gd.getBoundingClientRect(); const y=e.clientY-r.top-fl.yaxis._offset;
+    let best=null, bestD=HIT_PX;
+    for(const o of TRADE.pending){ const d=Math.abs(fl.yaxis.d2p(o.price)-y); if(d<bestD){bestD=d; best=o;} }
+    return best;
+  }
+  function dragColor(o){ return o.role==='tp'?COL.tp:o.role==='lc'?COL.lc:COL.entry; }
+  let dragRenderAt=0;
+  function showDrag(e){
+    const fl=gd._fullLayout, r=gd.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
+    // 価格はパネル外でも直線外挿で求める（表示範囲より上下に置ける）。表示位置だけパネル内にクランプ
+    const yRaw=e.clientY-r.top;
+    const yIn=Math.min(Math.max(yRaw,fl.yaxis._offset),fl.yaxis._offset+fl.yaxis._length);
+    const price=snapPrice(fl.yaxis.p2d(yRaw-fl.yaxis._offset)); drag.price=price;
+    // 注文価格を仮更新して軽く再描画すると、価格軸がラインを含むよう広がって続けてドラッグできる
+    if(price>0 && drag.order.price!==price){ drag.order.price=price; const now=performance.now(); if(now-dragRenderAt>90){ dragRenderAt=now; renderMainChart(true); } }
+    const top=(r.top-wr.top)+yIn, left=(r.left-wr.left)+fl.xaxis._offset;
+    dragLine.style.top=top+'px'; dragLine.style.left=left+'px'; dragLine.style.width=fl.xaxis._length+'px'; dragLine.style.borderTopColor=drag.color; dragLine.style.display='block';
+    const pct=TRADE.position!==0&&TRADE.avgPrice?' ('+fmtPct(pctFromAvg(price))+')':'';
+    dragLabel.textContent=(drag.order.role==='tp'?'TP ':drag.order.role==='lc'?'LC ':'')+fmtNum(price,priceDecimals())+pct; dragLabel.style.background=drag.color; dragLabel.style.top=top+'px'; dragLabel.style.right=(wr.width-left+2)+'px'; dragLabel.style.display='block';
+  }
+  gd.addEventListener('mousedown',e=>{
+    if(e.button!==0||!DATA.ticks.length)return;
+    const o=orderNear(e); if(!o)return;
+    e.stopPropagation(); e.preventDefault(); // Plotly のパン開始と発注メニューを抑止
+    drag={order:o,color:dragColor(o),price:o.price,origPrice:o.price,x:e.clientX,y:e.clientY}; showDrag(e); // ラインのドラッグ中も再生・再描画は続ける（案A）
+  },true);
+  gd.addEventListener('mousemove',e=>{
+    const dl=gd.querySelector('.nsewdrag'); if(!dl)return;
+    dl.style.cursor=(!drag && DATA.ticks.length && orderNear(e))?'ns-resize':'';
+  });
+  window.addEventListener('mousemove',e=>{ if(drag)showDrag(e); });
+  window.addEventListener('mouseup',e=>{
+    if(!drag)return; const d=drag; drag=null;
+    dragLine.style.display='none'; dragLabel.style.display='none';
+    const clicked=Math.hypot(e.clientX-d.x,e.clientY-d.y)<=4; // 動かさずに離した＝クリック。価格は元に戻して取消メニューを出す
+    if(clicked)d.order.price=d.origPrice; else if(Number.isFinite(d.price)&&d.price>0)d.order.price=d.price;
+    updateTradeUI(); renderMainChart(true);
+    if(clicked&&TRADE.pending.includes(d.order))showOrderLineMenu(d.order,e);
+  });
+}
+updateKabutanLinks(''); updateSliderLabels(); resetTrading(); renderAllCharts(true); installCrosshair('mainChart'); installCrosshair('refChart'); installOrderMenu(); window.addEventListener('resize',()=>{ const mc=document.getElementById('mainChart'); const rc=document.getElementById('refChart'); if(mc)Plotly.Plots.resize(mc); if(rc)Plotly.Plots.resize(rc); });
+</script>
+</body>
+</html>
