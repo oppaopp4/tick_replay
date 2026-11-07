@@ -138,8 +138,7 @@ tr.flat td.price,tr.flat td.qty,tr.flat td.amount{background:#252a32;color:#fff}
       <span class="stepGroup"><button id="prevBar" title="前の足の終わりへ戻る（←キー）">◀</button><button id="playToggle" class="primary" title="クリックで再生/停止を切替（スペースキーでも可）">▶ 再生</button><button id="nextBar" title="今の足の終わりまで進む（→キー）。約定判定は再生と同じ">▶</button></span><input id="slider" type="range" min="0" max="0" value="0" style="width:23%">
       <span class="stat" id="progress">0 / 0</span>
       <span class="stat" id="clock">--:--:--</span>
-      <label>表示 <select id="windowMode"><option value="auto" selected>直近中心</option><option value="all">当日全体</option></select></label>
-      <button id="chartReset" title="時間軸・価格軸とも既定（最新に追従・価格自動）に戻す（R / Alt+R キーでも可）">チャートリセット</button><span id="viewState"></span>
+      <button id="chartReset" title="時間軸・価格軸とも既定（当日全体・価格自動）に戻す（R / Alt+R キーでも可）">チャートリセット</button><span id="viewState"></span>
       <label class="note">出来高 <select id="volumeScaleMode"><option value="sqrt" selected>圧縮</option><option value="raw">通常</option></select></label>
       <label class="note"><input id="soundOn" type="checkbox" checked> 約定音</label>
     </div>
@@ -204,9 +203,9 @@ tr.flat td.price,tr.flat td.qty,tr.flat td.amount{background:#252a32;color:#fff}
 let DATA={symbol:"",date:"",code:"",tickCount:0,ticks:[],summary:{startPlayMs:0,endPlayMs:0,startMs:0,endMs:0}};
 let idx=0, timer=null, currentPlayMs=0, playBaseReal=0, playBaseMarket=0, barMinutes=1, lastRender=0;
 let TRADE=null;
-// 表示範囲（TradingView 風に時間軸と価格軸を別管理）。R/W: 時間軸の右端と幅（足番号。null=既定で最新に追従）、lastN: R を決めたときの足数
+// 表示範囲（TradingView 風に時間軸と価格軸を別管理）。R/W: 時間軸の右端と幅（足番号。null=既定＝当日全体）
 // priceAuto: 価格軸の自動スケール。false のときは y で固定。LAST: 直前に描いた範囲と足数
-const VIEW={R:null,W:null,lastN:0,priceAuto:true,y:null};
+const VIEW={R:null,W:null,priceAuto:true,y:null};
 let LAST={xr:[0,1],yr:[0,1],n:0};
 let DRAG=null; // 注文ラインのドラッグ中: {key, line, price, x, y, moved}
 const tapeBody=document.getElementById("tape"),slider=document.getElementById("slider"),progress=document.getElementById("progress"),nowPrice=document.getElementById("nowPrice"),nowTime=document.getElementById("nowTime"),clock=document.getElementById("clock");
@@ -406,11 +405,10 @@ const RIGHT_PAD=3;            // 自動調整のとき最新足の右に空け�
 const PAN={vol:[0,0.14],price:[0.17,1]};
 function getAxisRange(bars){ if(!bars.length)return [0,1]; let minP=Infinity,maxP=-Infinity; for(const b of bars){minP=Math.min(minP,b.low);maxP=Math.max(maxP,b.high);} const pad=Math.max(1,(maxP-minP)*0.08); return [minP-pad,maxP+pad]; }
 // 時間軸の範囲。x 軸は当日のすべての足をカテゴリにしているので、範囲は足番号（±0.5）で指定する
-//   既定（VIEW.R==null）: 「表示」に従い 直近中心=直近 100/85 本 + 右余白、当日全体=全足。新しい足が出たら追従
-//   手動: 右端 VIEW.R と幅 VIEW.W を保持。最後の足が画面内にあるときだけ新しい足の分だけ右へ送る（TradingView と同じ）
+//   既定（VIEW.R==null）: 当日全体（寄りから最新の足まで + 右余白）。足が増えるとその分だけ縮んで全体を表示し続ける
+//   手動: 右端 VIEW.R と幅 VIEW.W をそのまま使う。新しい足が出てもスクロールしない（≫ かリセットで戻す）
 function timeRange(n){
-  if(VIEW.R==null){ const keep=document.getElementById('windowMode').value==='all'?n:(barMinutes===1?100:85), from=Math.max(0,n-keep); return [from-0.5,n-0.5+RIGHT_PAD]; }
-  if(n!==VIEW.lastN){ if(VIEW.lastN-1<=VIEW.R)VIEW.R+=n-VIEW.lastN; VIEW.lastN=n; }
+  if(VIEW.R==null)return [-0.5,n-0.5+RIGHT_PAD];
   return [VIEW.R-VIEW.W,VIEW.R];
 }
 function barsInRange(bars,xr){ const a=Math.max(0,Math.ceil(xr[0])), b=Math.min(bars.length-1,Math.floor(xr[1])); return a<=b?bars.slice(a,b+1):bars; }
@@ -447,7 +445,7 @@ function renderMainChart(force=false){
   if(!VIEW.priceAuto&&grew)VIEW.y=yr.slice(); // 価格軸が手動のときはラインを範囲外へドラッグしたときだけ縦軸を広げる
   addCurrentPriceLine(shapes,annotations,yr);
   LAST={xr:xr.slice(),yr:yr.slice(),n:bars.length};
-  const commonX={type:'category',gridcolor:THEME.grid,tickfont:{size:11},showspikes:true,spikemode:'across',spikesnap:'cursor',spikethickness:1,spikedash:'dot',spikecolor:THEME.spike,rangeslider:{visible:false}};
+  const commonX={type:'category',gridcolor:THEME.grid,tickfont:{size:11},nticks:14,tickangle:0,showspikes:true,spikemode:'across',spikesnap:'cursor',spikethickness:1,spikedash:'dot',spikecolor:THEME.spike,rangeslider:{visible:false}};
   const layout={margin:{l:56,r:ORDER_LABEL_MARGIN,t:16,b:30},paper_bgcolor:THEME.bg,plot_bgcolor:THEME.bg,font:{color:THEME.text},
     xaxis:{...commonX,domain:[0,1],anchor:'y',showticklabels:false,range:xr,autorange:false,fixedrange:true},
     yaxis:{domain:PAN.price,range:yr,autorange:false,fixedrange:true,gridcolor:THEME.gridY,tickformat:priceDecimals()?',.1f':',d'},
@@ -510,7 +508,7 @@ function addOrderLines(shapes,annotations,range){
 }
 // ================= チャート操作（TradingView 風） =================
 // 時間軸と価格軸を別々に扱う。
-//   ホイール（チャート上）: 時間軸だけ拡大縮小。最後の足が見えている（最新に追従中）ときは最後の足を、過去へスクロール中はカーソル位置を基準にする。
+//   ホイール（チャート上）: 時間軸だけ拡大縮小。最新の足が見えているときは最新の足を、過去へスクロール中はカーソル位置を基準にする。一度操作したら新しい足が出てもスクロールしない。
 //     価格軸が「自動」なら表示中の足に合わせて縦も追従し、「手動」なら縦はそのまま
 //   ドラッグ（チャート上）: 横は時間スクロール。縦に動かすと価格軸が手動になり上下にも動く
 //   価格軸（左の目盛り）をドラッグ: 上で拡大・下で縮小（価格軸は手動に）。ホイールでも同じ。ダブルクリックで価格軸を自動に戻す
@@ -520,17 +518,17 @@ const MIN_BARS=8;
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function maxBars(){ return Math.max(LAST.n*1.2+RIGHT_PAD,60); } // 縮小しすぎて寄り付きの左に大きな空白が出ないように
 function timeIsDefault(){ return VIEW.R==null; }
-function following(){ return LAST.n>0 && LAST.n-1<=LAST.xr[1]; } // 最後の足が右端より左にある＝最新に追従中
-function materializeTime(){ if(VIEW.R==null){ VIEW.R=LAST.xr[1]; VIEW.W=LAST.xr[1]-LAST.xr[0]; VIEW.lastN=LAST.n; } }
+function following(){ return LAST.n>0 && LAST.n-1<=LAST.xr[1]; } // 最後の足が画面の右端より左にある（最新の足が見えている）
+function materializeTime(){ if(VIEW.R==null){ VIEW.R=LAST.xr[1]; VIEW.W=LAST.xr[1]-LAST.xr[0]; } }
 function materializePrice(){ if(VIEW.priceAuto){ VIEW.priceAuto=false; VIEW.y=LAST.yr.slice(); } }
-function clampTime(){ const n=VIEW.lastN; VIEW.W=clamp(VIEW.W,MIN_BARS,maxBars()); VIEW.R=clamp(VIEW.R,Math.min(MIN_BARS/2,n-0.5),n-0.5+VIEW.W*0.8); } // 少なくとも数本は画面に残す
+function clampTime(){ const n=LAST.n; VIEW.W=clamp(VIEW.W,MIN_BARS,maxBars()); VIEW.R=clamp(VIEW.R,Math.min(MIN_BARS/2,n-0.5),n-0.5+VIEW.W*0.8); } // 少なくとも数本は画面に残す
 function zoomTime(f,anchor){ materializeTime(); const L=VIEW.R-VIEW.W, W2=clamp(VIEW.W*f,MIN_BARS,maxBars()), p=(anchor-L)/VIEW.W; VIEW.R=anchor-p*W2+W2; VIEW.W=W2; clampTime(); }
 function panTime(dxPx,lenPx){ if(!dxPx)return; materializeTime(); VIEW.R-=dxPx*VIEW.W/lenPx; clampTime(); }
 function panPrice(dyPx,lenPx){ if(!dyPx||VIEW.priceAuto)return; const k=dyPx*(VIEW.y[1]-VIEW.y[0])/lenPx; VIEW.y=[VIEW.y[0]+k,VIEW.y[1]+k]; }
 function scalePrice(f){ materializePrice(); const c=(VIEW.y[0]+VIEW.y[1])/2, h=clamp((VIEW.y[1]-VIEW.y[0])/2*f,(DATA.tickSize||1)*2,1e9); VIEW.y=[c-h,c+h]; }
-function toLatest(){ materializeTime(); VIEW.R=VIEW.lastN-0.5+RIGHT_PAD; afterViewChange(); }
+function toLatest(){ materializeTime(); VIEW.R=LAST.n-0.5+RIGHT_PAD; afterViewChange(); } // 幅はそのまま最新の足へ。以後も手動なので自動スクロールはしない
 function setPriceAuto(on){ if(on){ VIEW.priceAuto=true; VIEW.y=null; } else materializePrice(); afterViewChange(); }
-function resetTime(render=true){ VIEW.R=VIEW.W=null; VIEW.lastN=0; if(render)afterViewChange(); }
+function resetTime(render=true){ VIEW.R=VIEW.W=null; if(render)afterViewChange(); }
 function resetView(render=true){ resetTime(false); VIEW.priceAuto=true; VIEW.y=null; if(render)afterViewChange(); else updateViewUI(); }
 function afterViewChange(){ updateViewUI(); renderMainChart(true); }
 let renderQueued=false;
@@ -775,7 +773,27 @@ function advanceToPlayMs(ms){
   updateHeader(); renderMainChart(filled);
   if(currentPlayMs>=DATA.summary.endPlayMs)pause();
 }
-function play(){ if(!DATA.ticks.length)return; pause(); playBaseReal=performance.now(); playBaseMarket=currentPlayMs; const speed=Number(document.getElementById('speed').value); timer=setInterval(()=>{ const elapsed=performance.now()-playBaseReal; advanceToPlayMs(playBaseMarket+elapsed*speed); },35); updatePlayButton(); }
+function play(){
+  if(!DATA.ticks.length)return; pause(); playBaseReal=performance.now(); playBaseMarket=currentPlayMs; const speed=Number(document.getElementById('speed').value);
+  timer=setInterval(()=>{
+    let target=playBaseMarket+(performance.now()-playBaseReal)*speed;
+    // 昼休み（前場最後の約定〜後場最初の約定）は短縮: 前場引けの少しあとで後場寄りの少し前まで飛ばす
+    const g=DATA.lunch; if(g && currentPlayMs<g.to && target>g.from){ playBaseMarket=g.to; playBaseReal=performance.now(); target=g.to; }
+    advanceToPlayMs(target);
+  },35);
+  updatePlayButton();
+}
+// 昼休みの区間を求める。12:00 をまたぐ 10 分以上の約定の空白を昼休みとみなし、前後 LUNCH_KEEP_MS ずつだけ残す（再生では約 4 秒×速度ぶんで通過）
+const LUNCH_KEEP_MS=2000;
+function findLunch(ticks){
+  const noon=12*3600000;
+  for(let i=0;i+1<ticks.length;i++){
+    const a=ticks[i], b=ticks[i+1];
+    if(a[5]<noon && b[5]>=noon && b[5]-a[5]>=10*60000){ const from=a[6]+LUNCH_KEEP_MS, to=b[5]-LUNCH_KEEP_MS; return to>from?{from,to}:null; }
+    if(a[5]>=noon)break;
+  }
+  return null;
+}
 function pause(){ if(timer)clearInterval(timer); timer=null; updatePlayButton(); }
 function togglePlay(){ if(timer)pause(); else play(); }
 function updatePlayButton(){ const b=document.getElementById('playToggle'); const playing=!!timer; b.textContent=playing?'■ 停止':'▶ 再生'; b.classList.toggle('playing',playing); b.classList.toggle('primary',!playing); }
@@ -794,7 +812,7 @@ function stepBar(dir){
 }
 function setTitleSymbol(){ const sub=[DATA.market, DATA.industry].filter(Boolean).join(' / '); document.getElementById('titleSymbol').textContent='● '+(DATA.code?DATA.code+' ':'')+DATA.symbol+(sub?' ['+sub+']':'')+(DATA.tradeDate?' / '+DATA.tradeDate:''); }
 function installData(d){
-  pause(); DATA=d; DATA.tickSize=inferTickSize(DATA.ticks); idx=0; currentPlayMs=DATA.summary.startPlayMs;
+  pause(); DATA=d; DATA.tickSize=inferTickSize(DATA.ticks); DATA.lunch=findLunch(DATA.ticks); idx=0; currentPlayMs=DATA.summary.startPlayMs;
   document.getElementById('stockCode').value=DATA.code||''; document.getElementById('tradeDate').value=DATA.tradeDate||''; document.getElementById('symbolName').value=DATA.symbol||'';
   updateKabutanLinks(DATA.code); setTitleSymbol();
   slider.max=DATA.tickCount-1; slider.value=0; tapeBody.innerHTML=''; addTickToTape(DATA.ticks[0]);
@@ -816,7 +834,6 @@ document.addEventListener('keydown',e=>{
 document.getElementById('nextBar').onclick=()=>stepBar(1); document.getElementById('prevBar').onclick=()=>stepBar(-1);
 document.getElementById('speed').onchange=()=>{ if(timer)play(); };
 document.getElementById('barMode').onchange=e=>{ barMinutes=Number(e.target.value); resetView(); }; // 足番号が変わるので表示固定は解除
-document.getElementById('windowMode').onchange=()=>resetView();
 document.getElementById('chartReset').onclick=()=>resetView();
 document.getElementById('volumeScaleMode').onchange=()=>renderMainChart(true);
 document.getElementById('setLimitNow').onclick=()=>{ const p=getCurrentPrice(); if(Number.isFinite(p))document.getElementById('limitPrice').value=p; };
